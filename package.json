@@ -1,0 +1,11 @@
+{
+  "name": "bulpan-daecheop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "sim": "node sim/simulate.mjs 100",
+    "serve": "python3 -m http.server 8000"
+  }
+}
