@@ -1,6 +1,6 @@
 // 밸런스 검수용 봇. 사람처럼 일정 간격(반응 시간)마다 키를 한 번씩 누른다.
-import { FOODS, STATS } from '../js/config.js';
-import { pressPlate, pressSlot, feverWarning } from '../js/game.js';
+import { FOODS, STATS, TONG_FOODS } from '../js/config.js';
+import { pressPlate, pressTongs, feverWarning } from '../js/game.js';
 
 const FOOD_FOR = { carb: [0], protein: [1], vitamin: [2, 3] };
 
@@ -8,9 +8,9 @@ export const BOTS = {
   idle() {},
 
   random(g, pi, rng) {
-    const k = Math.floor(rng() * 12);
+    const k = Math.floor(rng() * 6);
     if (k < 4) pressPlate(g, pi, k);
-    else pressSlot(g, pi, k - 4);
+    else pressTongs(g, pi, TONG_FOODS[k - 4]);
   },
 
   greedy(g, pi) {
@@ -20,11 +20,9 @@ export const BOTS = {
 
     // 1. 익은 음식 먹기 (가장 부족한 수치를 채우는 것부터)
     if (p.cooldown <= 0) {
-      const cooked = g.grill
-        .map((it, i) => ({ it, i }))
-        .filter(({ it }) => it && it.state === 'cooked' && room(it.food));
-      cooked.sort((a, b) => score(a.it.food) - score(b.it.food));
-      if (cooked.length) return pressSlot(g, pi, cooked[0].i);
+      const ready = TONG_FOODS.filter((fi) => room(fi) && g.grill.some((it) => it && it.food === fi && it.state === 'cooked'));
+      ready.sort((a, b) => score(a) - score(b));
+      if (ready.length) return pressTongs(g, pi, ready[0]);
     }
     function score(fi) {
       return Math.min(...STATS.filter((s) => FOODS[fi].gain[s] > 0).map((s) => order.indexOf(s)));
@@ -50,11 +48,7 @@ export const BOTS = {
       for (const fi of pref) if (g.plates[fi].stock > 0) return pressPlate(g, pi, fi);
     }
 
-    // 4. 탄 음식 치우기
-    const burnt = g.grill.findIndex((x) => x && x.state === 'burnt');
-    if (burnt >= 0) return pressSlot(g, pi, burnt);
-
-    // 5. 여유가 있으면 바로 먹는 음식으로 수치 보충
+    // 4. 여유가 있으면 바로 먹는 음식으로 수치 보충
     if (p.cooldown <= 0) {
       for (const s of order) for (const fi of FOOD_FOR[s]) {
         if (!FOODS[fi].grill && g.plates[fi].stock > 0 && room(fi)) return pressPlate(g, pi, fi);

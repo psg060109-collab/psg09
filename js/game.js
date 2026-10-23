@@ -110,7 +110,15 @@ export function step(g, dt) {
       it.cookedFor += dt;
       if (it.cookedFor >= cfg.burnAfter) {
         it.state = 'burnt';
+        it.burntFor = 0;
         emit(g, { type: 'burnt', slot: i });
+      }
+    } else {
+      // 탄 음식은 잠시 뒤 저절로 치워진다
+      it.burntFor += dt;
+      if (it.burntFor >= cfg.burntClear) {
+        g.grill[i] = null;
+        emit(g, { type: 'discard', slot: i });
       }
     }
   });
@@ -171,24 +179,28 @@ export function pressPlate(g, pi, plateIndex) {
   return 'place';
 }
 
-// 불판 키. 결과: 'eat' | 'discard' | 'raw' | 'none' | 'cooldown' | null
-export function pressSlot(g, pi, slot) {
+// 집게 키: 그 음식 중 익은 것, 곧 탈 것부터 먹는다.
+// 결과: 'eat' | 'raw'(아직 안 익음) | 'none'(불판에 없음) | 'cooldown' | null
+export function pressTongs(g, pi, foodIndex) {
   if (g.over) return null;
-  const it = g.grill[slot];
-  if (!it) return 'none';
-  if (it.state === 'raw') {
-    emit(g, { type: 'fail', player: pi, slot, reason: 'raw' });
-    return 'raw';
-  }
-  if (it.state === 'burnt') {
-    g.grill[slot] = null;
-    emit(g, { type: 'discard', player: pi, slot });
-    return 'discard';
+  let best = -1;
+  let anyRaw = false;
+  g.grill.forEach((it, i) => {
+    if (!it || it.food !== foodIndex) return;
+    if (it.state === 'raw') anyRaw = true;
+    else if (it.state === 'cooked' && (best < 0 || it.cookedFor > g.grill[best].cookedFor)) best = i;
+  });
+  if (best < 0) {
+    const reason = anyRaw ? 'raw' : 'none';
+    emit(g, { type: 'fail', player: pi, tongs: foodIndex, reason });
+    return reason;
   }
   if (g.players[pi].cooldown > 0) return 'cooldown';
-  g.grill[slot] = null;
-  if (it.owner !== pi) g.players[pi].stolen++;
+  const it = g.grill[best];
+  g.grill[best] = null;
+  const stolen = it.owner !== pi;
+  if (stolen) g.players[pi].stolen++;
   eat(g, pi, it.food);
-  emit(g, { type: 'grillEat', player: pi, slot, stolen: it.owner !== pi });
+  emit(g, { type: 'grillEat', player: pi, slot: best, stolen });
   return 'eat';
 }

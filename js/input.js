@@ -2,11 +2,11 @@
 export const KEYMAP = [
   {
     plates: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'],
-    grill: ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyZ', 'KeyX', 'KeyC', 'KeyV'],
+    tongs: ['KeyA', 'KeyS'], // 고기, 버섯
   },
   {
     plates: ['KeyU', 'KeyI', 'KeyO', 'KeyP'],
-    grill: ['KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'KeyM', 'Comma', 'Period', 'Slash'],
+    tongs: ['KeyJ', 'KeyK'],
   },
 ];
 
@@ -18,7 +18,7 @@ export function keyLabel(code) {
 const LOOKUP = new Map();
 KEYMAP.forEach((m, player) => {
   m.plates.forEach((code, index) => LOOKUP.set(code, { player, kind: 'plate', index }));
-  m.grill.forEach((code, index) => LOOKUP.set(code, { player, kind: 'grill', index }));
+  m.tongs.forEach((code, index) => LOOKUP.set(code, { player, kind: 'tongs', index }));
 });
 
 export function lookup(code) {

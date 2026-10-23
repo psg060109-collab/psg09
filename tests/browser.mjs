@@ -87,7 +87,7 @@ await check('키를 꾹 누르고 있어도(반복 입력) 한 번만 처리된�
   assert((await state(page, 'B.game.plates[3].stock')) === stock - 1);
 });
 
-await check('실제 키 입력으로 고기를 올리고, 익으면 2P가 뺏어 먹는다', async () => {
+await check('실제 키 입력으로 고기를 올리고, 익으면 2P가 집게(J)로 뺏어 먹는다', async () => {
   await page.keyboard.press('KeyW');
   assert((await state(page, 'B.game.grill[0]?.owner')) === 0);
   await until(page, "B.game.grill[0]?.state === 'cooked'");
@@ -97,15 +97,17 @@ await check('실제 키 입력으로 고기를 올리고, 익으면 2P가 뺏어
   assert((await state(page, 'B.game.players[1].stats.protein')) > before + 25);
 });
 
-await check('아랫줄 키(Z·/)가 5·8번 칸에 연결된다', async () => {
+await check('S·K 버섯 집게: 익은 버섯은 집히고, 탄 음식은 저절로 사라진다', async () => {
   await page.evaluate(() => {
     const g = window.__bulpan.game;
-    g.grill[4] = { food: 1, state: 'burnt', progress: 4.5, cookedFor: 4, owner: 0 };
-    g.grill[7] = { food: 1, state: 'burnt', progress: 4.5, cookedFor: 4, owner: 1 };
+    g.grill[4] = { food: 2, state: 'cooked', progress: 3, cookedFor: 0, owner: 0 };
+    g.grill[7] = { food: 1, state: 'burnt', progress: 4.5, cookedFor: 4, burntFor: 0, owner: 1 };
   });
-  await page.keyboard.press('KeyZ');
-  await page.keyboard.press('Slash');
-  assert((await state(page, 'B.game.grill[4] === null && B.game.grill[7] === null')) === true);
+  await page.waitForTimeout(400);
+  await page.keyboard.press('KeyK');
+  assert((await state(page, 'B.game.grill[4]')) === null, '버섯이 집히지 않음');
+  assert((await state(page, 'B.game.players[1].eaten.mushroom')) === 1);
+  await until(page, 'B.game.grill[7] === null', 4000);
 });
 
 await check('ESC로 일시정지하면 시간이 멈추고, 다시 ESC로 계속된다', async () => {

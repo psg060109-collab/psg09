@@ -73,36 +73,7 @@ export const SPRITE_ROWS = {
     '.......Wo.......',
     '................',
   ],
-  face: [
-    '................',
-    '....oooooooo....',
-    '...oSSSSSSSSo...',
-    '..oHHHHHHHHHHo..',
-    '..oHHHHHHHHHHoH.',
-    '..oSSSSSSSSSSo.H',
-    '..oSSeSSSSeSSo..',
-    '..oSSeSSSSeSSo..',
-    '..oSpSSSSSSpSo..',
-    '..oSSSSMMSSSSo..',
-    '...oSSSSSSSSo...',
-    '....oooooooo....',
-    '...oTTTTTTTTo...',
-    '..oTTTTTTTTTTo..',
-    '.oTTTTTTTTTTTTo.',
-    '.oTTTTTTTTTTTTo.',
-  ],
 };
-
-// 입 벌린 얼굴: 9~10번 줄만 다르다
-SPRITE_ROWS.faceOpen = SPRITE_ROWS.face.map((r, i) =>
-  i === 9 ? '..oSSSSmmSSSSo..' : i === 10 ? '...oSSSmmSSSo...' : r,
-);
-// 지친 얼굴(수치 위험): 눈이 X, 땀
-SPRITE_ROWS.faceTired = SPRITE_ROWS.face.map((r, i) =>
-  i === 6 ? '..oSeSeSSeSeSo..' : i === 7 ? '..oSSeSSSSeSSod.' : i === 8 ? '..oSeSeSSeSeSod.' : r,
-);
-
-const OUTLINE = '#2b1d1a';
 
 export const PALETTES = {
   rice: { w: '#f7f3e8', k: '#d6cfbc', o: '#1f2a44', B: '#4a73b5', L: '#8fb2ea', D: '#2f5290' },
@@ -117,10 +88,6 @@ export const PALETTES = {
     cooked: { o: '#2a170c', C: '#8a5a32', c: '#c08a52', g: '#5a3a20', S: '#dcc49a', s: '#b89a70', mark: '#4a2a14' },
     burnt:  { o: '#0e0b0b', C: '#2a2222', c: '#3e3434', g: '#1a1414', S: '#3a3232', s: '#2a2424', mark: '#141010' },
   },
-  player: [
-    { o: OUTLINE, S: '#f2c09a', e: '#2a1a14', p: '#ee8f7e', H: '#e84a4a', T: '#c43a3a', M: '#a33a2a', m: '#3a1010', d: '#7ec8f0' },
-    { o: OUTLINE, S: '#f2c09a', e: '#2a1a14', p: '#ee8f7e', H: '#3f86e8', T: '#2f62b8', M: '#a33a2a', m: '#3a1010', d: '#7ec8f0' },
-  ],
 };
 
 export function validateRows(rows) {
@@ -155,11 +122,6 @@ export function buildSprites() {
   const s = {
     rice: makeSprite(SPRITE_ROWS.rice, PALETTES.rice),
     lettuce: makeSprite(SPRITE_ROWS.lettuce, PALETTES.lettuce),
-    faces: PALETTES.player.map((pal) => ({
-      idle: makeSprite(SPRITE_ROWS.face, pal),
-      open: makeSprite(SPRITE_ROWS.faceOpen, pal),
-      tired: makeSprite(SPRITE_ROWS.faceTired, pal),
-    })),
   };
   for (const id of ['meat', 'mushroom']) {
     s[id] = {};

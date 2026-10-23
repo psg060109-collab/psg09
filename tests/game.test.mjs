@@ -1,8 +1,8 @@
 // 기획서 ⑥ 완료 기준 — 핵심 규칙 · 피버 · 밸런스 (node --test tests/)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG, FOODS, decayRate } from '../js/config.js';
-import { createGame, step, pressPlate, pressSlot, feverWarning } from '../js/game.js';
+import { CONFIG, FOODS, TONG_FOODS, decayRate } from '../js/config.js';
+import { createGame, step, pressPlate, pressTongs, feverWarning } from '../js/game.js';
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking } from '../js/ranking.js';
@@ -97,16 +97,13 @@ test('1P는 1번 칸부터, 2P는 4번 칸부터 올리고, 윗줄이 차면 1P�
   assert.ok(g.grill[7]);
 });
 
-test('아랫줄 5~8번 칸도 먹거나 치울 수 있다 (Z·X·C·V / M·,·.·/)', () => {
-  assert.deepEqual(lookup('KeyZ'), { player: 0, kind: 'grill', index: 4 });
-  assert.deepEqual(lookup('KeyV'), { player: 0, kind: 'grill', index: 7 });
-  assert.deepEqual(lookup('KeyM'), { player: 1, kind: 'grill', index: 4 });
-  assert.deepEqual(lookup('Slash'), { player: 1, kind: 'grill', index: 7 });
-  assert.equal(GAME_CODES.length, 24);
-  const g = newGame();
-  g.grill[6] = { food: MEAT, state: 'cooked', progress: 4.5, cookedFor: 0, owner: 0 };
-  assert.equal(pressSlot(g, 1, 6), 'eat');
-  assert.equal(g.grill[6], null);
+test('집게 키는 1P A·S, 2P J·K이고 게임 키는 모두 12개', () => {
+  assert.deepEqual(lookup('KeyA'), { player: 0, kind: 'tongs', index: 0 });
+  assert.deepEqual(lookup('KeyS'), { player: 0, kind: 'tongs', index: 1 });
+  assert.deepEqual(lookup('KeyJ'), { player: 1, kind: 'tongs', index: 0 });
+  assert.deepEqual(lookup('KeyK'), { player: 1, kind: 'tongs', index: 1 });
+  assert.deepEqual(TONG_FOODS, [MEAT, MUSH]);
+  assert.equal(GAME_CODES.length, 12);
 });
 
 test('불판 8칸이 모두 차 있으면 고기·버섯 재고가 줄지 않는다', () => {
@@ -116,41 +113,69 @@ test('불판 8칸이 모두 차 있으면 고기·버섯 재고가 줄지 않는
   assert.equal(g.plates[MUSH].stock, 3);
 });
 
-test('고기는 4.5초 전에는 먹히지 않고, 익으면 누른 사람의 단백질이 30 오른다', () => {
+test('고기는 4.5초 전에는 집히지 않고, 익으면 집은 사람의 단백질이 30 오른다', () => {
   const g = newGame();
   pressPlate(g, 0, MEAT);
   topUp(g);
   run(g, 4.3);
-  assert.equal(pressSlot(g, 0, 0), 'raw');
+  assert.equal(pressTongs(g, 0, MEAT), 'raw');
   assert.ok(g.grill[0]);
   run(g, 0.3);
   assert.equal(g.grill[0].state, 'cooked');
   g.players[0].stats.protein = 50;
-  assert.equal(pressSlot(g, 0, 0), 'eat');
+  assert.equal(pressTongs(g, 0, MEAT), 'eat');
   assert.equal(g.players[0].stats.protein, 80);
   assert.equal(g.grill[0], null);
 });
 
-test('1P가 올린 고기를 2P가 먼저 먹을 수 있다 (뺏어먹기 기록)', () => {
+test('불판에 그 음식이 없으면 집게는 아무것도 하지 않는다', () => {
+  const g = newGame();
+  const before = { ...g.players[0].stats };
+  assert.equal(pressTongs(g, 0, MUSH), 'none');
+  assert.deepEqual(g.players[0].stats, before);
+});
+
+test('고기 집게는 버섯을 집지 않는다', () => {
+  const g = newGame();
+  g.grill[2] = { food: MUSH, state: 'cooked', progress: 3, cookedFor: 0, owner: 0 };
+  assert.equal(pressTongs(g, 0, MEAT), 'none');
+  assert.ok(g.grill[2]);
+});
+
+test('집게는 익은 것 중 곧 탈 것(오래 익은 것)부터 집는다', () => {
+  const g = newGame();
+  g.grill[1] = { food: MEAT, state: 'cooked', progress: 4.5, cookedFor: 1, owner: 0 };
+  g.grill[5] = { food: MEAT, state: 'cooked', progress: 4.5, cookedFor: 3, owner: 0 };
+  g.grill[6] = { food: MEAT, state: 'raw', progress: 1, cookedFor: 0, owner: 0 };
+  pressTongs(g, 1, MEAT);
+  assert.equal(g.grill[5], null);
+  assert.ok(g.grill[1] && g.grill[6]);
+});
+
+test('1P가 올린 고기를 2P가 먼저 집어 먹을 수 있다 (뺏어먹기 기록)', () => {
   const g = newGame();
   pressPlate(g, 0, MEAT);
   topUp(g);
   run(g, 4.6);
   g.players[1].stats.protein = 10;
-  assert.equal(pressSlot(g, 1, 0), 'eat');
+  assert.equal(pressTongs(g, 1, MEAT), 'eat');
   assert.equal(g.players[1].stats.protein, 40);
   assert.equal(g.players[1].stolen, 1);
 });
 
-test('익고 4초가 지나면 타고, 누르면 수치 변화 없이 칸이 빈다', () => {
+test('익고 4초가 지나면 타고, 탄 뒤 2초가 지나면 저절로 치워진다', () => {
   const g = newGame();
   pressPlate(g, 0, MUSH);
   topUp(g);
   run(g, 3.1 + 4.1);
   assert.equal(g.grill[0].state, 'burnt');
   const before = { ...g.players[0].stats };
-  assert.equal(pressSlot(g, 0, 0), 'discard');
+  assert.equal(pressTongs(g, 0, MUSH), 'none'); // 탄 건 집히지 않는다
   assert.deepEqual(g.players[0].stats, before);
+  topUp(g);
+  run(g, 1.7);
+  assert.ok(g.grill[0]);
+  run(g, 0.3);
   assert.equal(g.grill[0], null);
 });
 

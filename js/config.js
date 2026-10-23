@@ -24,6 +24,7 @@ export const CONFIG = {
 
   grillSlots: 8,
   burnAfter: 4.0, // 익은 뒤 탈 때까지 (피버와 관계없이 실제 시간)
+  burntClear: 2.0, // 탄 뒤 저절로 치워질 때까지
 
   // 감소량/초 = base + slope × t (+ rampSlope × (t − rampStart), t > rampStart)
   decayBase: 1.0,
@@ -44,6 +45,9 @@ export const CONFIG = {
 
   countdown: 3,
 };
+
+// 집게 키가 집는 음식 (고기, 버섯)
+export const TONG_FOODS = [1, 2];
 
 // 빈 불판 칸을 찾는 순서: 1P는 왼쪽 위부터, 2P는 오른쪽 위부터
 export const PLACE_ORDER = [

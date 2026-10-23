@@ -1,5 +1,5 @@
-import { CONFIG } from './config.js';
-import { createGame, step, pressPlate, pressSlot } from './game.js';
+import { CONFIG, TONG_FOODS } from './config.js';
+import { createGame, step, pressPlate, pressTongs } from './game.js';
 import { attachInput } from './input.js';
 import { createRenderer, W, H } from './render.js';
 import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js';
@@ -67,7 +67,7 @@ function onKey(code, action) {
       }
       if (!action) return;
       if (action.kind === 'plate') pressPlate(game, action.player, action.index);
-      else pressSlot(game, action.player, action.index);
+      else pressTongs(game, action.player, TONG_FOODS[action.index]);
       break;
     case 'pause':
       if (code === 'Escape') screen = 'play';

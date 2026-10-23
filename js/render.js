@@ -1,5 +1,5 @@
 // Canvas 2D 도트 렌더링. 논리 해상도 640×360, CSS로 정수배 확대한다.
-import { CONFIG, FOODS, STATS, STAT_LABEL, STAT_SHORT, decayRate } from './config.js';
+import { CONFIG, FOODS, STATS, STAT_LABEL, TONG_FOODS, decayRate } from './config.js';
 import { feverWarning, feverRemaining } from './game.js';
 import { KEYMAP, keyLabel } from './input.js';
 import { buildSprites } from './sprites.js';
@@ -28,7 +28,9 @@ const C = {
 const PLATE_X = 176; // 접시·불판 첫 칸의 x
 const CELL = 72;
 const PLATE_Y = 52;
-const GRILL_Y = [160, 252];
+// 불판 위 8자리의 중심 (윗줄 4 + 아랫줄 4)
+const SLOT_X = [212, 284, 356, 428];
+const SLOT_Y = [210, 286];
 const SIDE_X = [8, 488];
 
 const MAX_PARTICLES = 80;
@@ -45,9 +47,8 @@ export function createRenderer(canvas) {
     particles: [],
     floaters: [],
     shakePlate: [0, 0, 0, 0],
-    shakeSlot: Array(CONFIG.grillSlots).fill(0),
+    shakeTong: [0, 0, 0, 0], // 1P 고기·버섯, 2P 고기·버섯
     flashSlot: Array(CONFIG.grillSlots).fill(0),
-    mouth: [0, 0],
     feverFlash: 0,
   };
 
@@ -60,18 +61,17 @@ export function createRenderer(canvas) {
   function floater(pi, stat, text, color) {
     if (fx.floaters.length >= MAX_FLOATERS) fx.floaters.shift();
     const row = STATS.indexOf(stat);
-    fx.floaters.push({ x: SIDE_X[pi] + 118, y: 112 + row * 34, text, color, life: 0.9 });
+    fx.floaters.push({ x: SIDE_X[pi] + 118, y: 40 + row * 50, text, color, life: 0.9 });
   }
 
   function slotCenter(i) {
-    return [PLATE_X + (i % 4) * CELL + 36, GRILL_Y[i < 4 ? 0 : 1] + 30];
+    return [SLOT_X[i % 4], SLOT_Y[i < 4 ? 0 : 1]];
   }
 
   function consume(events) {
     for (const ev of events) {
       switch (ev.type) {
         case 'eat':
-          fx.mouth[ev.player] = 0.3;
           for (const [s, v] of Object.entries(ev.gains)) floater(ev.player, s, `+${v}`, C.stat[s]);
           break;
         case 'grillEat': {
@@ -81,7 +81,7 @@ export function createRenderer(canvas) {
           break;
         }
         case 'fail':
-          if (ev.slot !== undefined) fx.shakeSlot[ev.slot] = 0.2;
+          if (ev.tongs !== undefined) fx.shakeTong[ev.player * 2 + TONG_FOODS.indexOf(ev.tongs)] = 0.25;
           else fx.shakePlate[ev.plate] = 0.25;
           break;
         case 'discard': {
@@ -98,7 +98,7 @@ export function createRenderer(canvas) {
 
   function update(dt, g) {
     fx.time += dt;
-    for (const arr of [fx.shakePlate, fx.shakeSlot, fx.flashSlot, fx.mouth]) {
+    for (const arr of [fx.shakePlate, fx.shakeTong, fx.flashSlot]) {
       for (let i = 0; i < arr.length; i++) arr[i] = Math.max(0, arr[i] - dt);
     }
     fx.feverFlash = Math.max(0, fx.feverFlash - dt);
@@ -193,18 +193,14 @@ export function createRenderer(canvas) {
     const x = SIDE_X[pi];
     const p = g.players[pi];
     box(x, 6, 144, 348);
-    // 이름
-    box(x + 4, 10, 136, 22, C.pDark[pi], C.ink);
-    text(`${pi + 1}P`, x + 72, 15, { align: 'center', color: C.p[pi] });
-
+    // 이름 (수치가 위험하면 깜빡임)
     const danger = STATS.some((s) => p.stats[s] <= 15);
-    const face = fx.mouth[pi] > 0 ? sprites.faces[pi].open : danger ? sprites.faces[pi].tired : sprites.faces[pi].idle;
-    const bob = fx.mouth[pi] > 0 ? (blink(16) ? -2 : 0) : 0;
-    sprite(face, x + 40, 36 + bob, 4);
+    box(x + 4, 10, 136, 22, danger && blink(6) ? '#b81f1f' : C.pDark[pi], C.ink);
+    text(danger ? `${pi + 1}P 위험!` : `${pi + 1}P`, x + 72, 15, { align: 'center', color: danger ? '#fff' : C.p[pi] });
 
     const icons = { protein: sprites.meat.cooked, carb: sprites.rice, vitamin: sprites.lettuce };
     STATS.forEach((s, row) => {
-      const y = 104 + row * 34;
+      const y = 42 + row * 50;
       const v = p.stats[s];
       sprite(icons[s], x + 6, y, 1);
       text(STAT_LABEL[s], x + 26, y + 2, { color: C.dim });
@@ -212,23 +208,29 @@ export function createRenderer(canvas) {
       let col = C.stat[s];
       if (v <= 15) col = blink(6) ? C.danger : '#7a1a1a';
       else if (v <= 30) col = C.warn;
-      rect(x + 6, y + 18, 132, 10, C.ink);
-      rect(x + 7, y + 19, Math.round((130 * v) / CONFIG.statMax), 8, col);
-      rect(x + 7, y + 19, Math.round((130 * v) / CONFIG.statMax), 2, 'rgba(255,255,255,0.35)');
+      const w = Math.round((130 * v) / CONFIG.statMax);
+      rect(x + 6, y + 18, 132, 16, C.ink);
+      rect(x + 7, y + 19, w, 14, col);
+      rect(x + 7, y + 19, w, 3, 'rgba(255,255,255,0.35)');
     });
 
     // 키 안내
     const m = KEYMAP[pi];
-    const gy = 212;
-    box(x + 4, gy, 136, 138, '#2a1b11', C.ink);
+    const gy = 188;
+    box(x + 4, gy, 136, 162, '#2a1b11', C.ink);
     text('접시', x + 10, gy + 6, { color: C.dim });
     m.plates.forEach((code, i) => {
       const kx = x + 12 + i * 31;
-      sprite(sprites.plateFood[i], kx + 4, gy + 22, 1);
-      keyCap(kx, gy + 40, keyLabel(code), pi);
+      sprite(sprites.plateFood[i], kx + 4, gy + 24, 1);
+      keyCap(kx, gy + 42, keyLabel(code), pi);
     });
-    text('불판', x + 10, gy + 66, { color: C.dim });
-    m.grill.forEach((code, i) => keyCap(x + 12 + (i % 4) * 31, gy + 84 + Math.floor(i / 4) * 24, keyLabel(code), pi));
+    text('집게 (익은 것 먹기)', x + 10, gy + 74, { color: C.dim });
+    m.tongs.forEach((code, k) => {
+      const shake = fx.shakeTong[pi * 2 + k] > 0 ? Math.round(Math.sin(fx.time * 80) * 2) : 0;
+      const kx = x + 24 + k * 64 + shake;
+      sprite(sprites[FOODS[TONG_FOODS[k]].id].cooked, kx, gy + 90);
+      keyCap(kx + 4, gy + 126, keyLabel(code), pi);
+    });
   }
 
   function keyCap(x, y, label, pi, lit = false) {
@@ -290,62 +292,81 @@ export function createRenderer(canvas) {
     });
   }
 
+  // 하나로 이어진 큰 불판
+  const GRILL = { x: 172, y: 162, w: 296, h: 166 };
+  const embers = (() => {
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    return Array.from({ length: 70 }, () => ({
+      x: GRILL.x + 2 + Math.floor(rnd() * (GRILL.w - 10)),
+      y: GRILL.y + 4 + Math.floor(rnd() * (GRILL.h - 10)),
+      w: 4 + Math.floor(rnd() * 5),
+      h: 3 + Math.floor(rnd() * 3),
+      ph: rnd() * 6.28,
+    }));
+  })();
+
   function drawGrill(g) {
     const fever = g.fever.active;
-    box(166, 156, 308, 196, fever ? '#3a1408' : '#24180f', C.ink);
+    const G = GRILL;
+    box(G.x - 6, G.y - 6, G.w + 12, G.h + 30, fever ? '#3a1408' : '#24180f', C.ink);
+    rect(G.x, G.y, G.w, G.h, '#141418');
+    // 숯불
+    for (const e of embers) {
+      const fl = Math.sin(fx.time * (fever ? 12 : 4) + e.ph);
+      let col = fl > 0.5 ? '#ff7a1a' : fl > -0.2 ? '#b83a10' : '#5a1a0a';
+      if (fever) col = fl > 0.3 ? '#ffd23a' : '#ff6a1a';
+      rect(e.x, e.y, e.w, e.h, col);
+    }
+    // 석쇠: 가로 살이 끝까지 이어진다
+    for (let y = G.y + 3; y < G.y + G.h; y += 8) {
+      rect(G.x, y, G.w, 2, '#4c4c58');
+      rect(G.x, y, G.w, 1, '#6a6a78');
+    }
+    rect(G.x, G.y, 2, G.h, '#6a6a78');
+    rect(G.x + G.w - 2, G.y, 2, G.h, '#6a6a78');
+
     g.grill.forEach((it, i) => {
-      const col = i % 4;
-      const row = i < 4 ? 0 : 1;
-      const sx = fx.shakeSlot[i] > 0 ? Math.round(Math.sin(fx.time * 80) * 2) : 0;
-      const x = PLATE_X + col * CELL + 4 + sx;
-      const y = GRILL_Y[row] + 4;
+      const [cx, cy] = slotCenter(i);
+      if (fx.flashSlot[i] > 0) rect(cx - 28, cy - 30, 56, 52, 'rgba(255,255,255,0.4)');
+      if (!it) return;
+      const food = FOODS[it.food];
 
-      // 숯불
-      rect(x, y, 64, 64, '#18181c');
-      for (let k = 0; k < 10; k++) {
-        const fl = Math.sin(fx.time * (fever ? 14 : 5) + i * 3 + k * 1.7);
-        const hot = fever ? '#ff7a1a' : '#b83a10';
-        rect(x + 3 + k * 6, y + 54 + Math.round(fl), 4, 10, fl > 0.3 ? (fever ? '#ffd23a' : '#ff6a1a') : hot);
-      }
-      // 석쇠
-      for (let k = 0; k < 8; k++) rect(x, y + 4 + k * 8, 64, 2, '#4c4c58');
-      rect(x, y, 64, 2, '#6a6a78');
-
-      // 칸 테두리 상태
-      if (it && it.state === 'cooked') {
+      if (it.state === 'cooked') {
+        // 익음: 초록 모서리 표시, 곧 탈 때는 빠르게 깜빡임
         const edge = blink(it.cookedFor > CONFIG.burnAfter - 1.5 ? 10 : 3) ? C.cooked : '#1f8a2a';
-        rect(x - 2, y - 2, 68, 2, edge);
-        rect(x - 2, y + 64, 68, 2, edge);
-        rect(x - 2, y - 2, 2, 68, edge);
-        rect(x + 64, y - 2, 2, 68, edge);
-      }
-      if (fx.flashSlot[i] > 0) rect(x, y, 64, 64, 'rgba(255,255,255,0.4)');
-
-      if (it) {
-        const food = FOODS[it.food];
-        const img = sprites[food.id][it.state];
-        const sizzle = it.state !== 'burnt' ? Math.round(Math.sin(fx.time * 20 + i) * 0.6) : 0;
-        sprite(img, x + 16, y + 10 + sizzle);
-        // 올린 사람 표시
-        rect(x + 2, y + 2, 6, 6, C.ink);
-        rect(x + 3, y + 3, 4, 4, C.p[it.owner]);
-        // 진행 바
-        rect(x + 8, y + 44, 48, 6, C.ink);
-        if (it.state === 'raw') {
-          rect(x + 9, y + 45, Math.round((46 * it.progress) / food.cookTime), 4, C.raw);
-        } else if (it.state === 'cooked') {
-          rect(x + 9, y + 45, Math.round(46 * (1 - it.cookedFor / CONFIG.burnAfter)), 4, C.cooked);
-        } else {
-          text('탐!', x + 32, y + 40, { align: 'center', color: '#bbb' });
+        const L = 8;
+        const [x0, y0, x1, y1] = [cx - 28, cy - 30, cx + 26, cy + 20];
+        for (const [ax, ay, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
+          rect(sx > 0 ? ax : ax - L + 2, ay, L, 2, edge);
+          rect(ax, sy > 0 ? ay : ay - L + 2, 2, L, edge);
         }
       }
 
-      // 키 안내
-      const ky = y + 68;
-      text(keyLabel(KEYMAP[0].grill[i]), x + 20, ky, { align: 'center', color: C.p[0] });
-      text('·', x + 32, ky, { align: 'center', color: C.dim });
-      text(keyLabel(KEYMAP[1].grill[i]), x + 44, ky, { align: 'center', color: C.p[1] });
+      if (it.state === 'burnt') ctx.globalAlpha = Math.max(0.2, 1 - it.burntFor / CONFIG.burntClear);
+      const sizzle = it.state !== 'burnt' ? Math.round(Math.sin(fx.time * 20 + i) * 0.6) : 0;
+      sprite(sprites[food.id][it.state], cx - 16, cy - 24 + sizzle);
+      ctx.globalAlpha = 1;
+      // 올린 사람 표시
+      rect(cx - 24, cy - 26, 6, 6, C.ink);
+      rect(cx - 23, cy - 25, 4, 4, C.p[it.owner]);
+      // 진행 바
+      if (it.state === 'raw') {
+        rect(cx - 24, cy + 10, 48, 6, C.ink);
+        rect(cx - 23, cy + 11, Math.round((46 * it.progress) / food.cookTime), 4, C.raw);
+      } else if (it.state === 'cooked') {
+        rect(cx - 24, cy + 10, 48, 6, C.ink);
+        rect(cx - 23, cy + 11, Math.round(46 * (1 - it.cookedFor / CONFIG.burnAfter)), 4, C.cooked);
+      } else {
+        text('탐!', cx, cy + 6, { align: 'center', color: '#bbb' });
+      }
     });
+
+    // 집게 키 안내
+    const hy = G.y + G.h + 6;
+    text(`1P  ${keyLabel(KEYMAP[0].tongs[0])}고기 ${keyLabel(KEYMAP[0].tongs[1])}버섯`, G.x + 4, hy, { color: C.p[0] });
+    text('집게', G.x + G.w / 2, hy, { align: 'center', color: C.dim });
+    text(`${keyLabel(KEYMAP[1].tongs[0])}고기 ${keyLabel(KEYMAP[1].tongs[1])}버섯  2P`, G.x + G.w - 4, hy, { color: C.p[1], align: 'right' });
   }
 
   function drawEffects() {
@@ -400,8 +421,8 @@ export function createRenderer(canvas) {
     const rules = [
       ['단백질·탄수화물·비타민 중 하나라도 0이 되면 패배!', C.text],
       ['밥·상추는 바로 먹고, 고기·버섯은 불판에 굽는다', C.text],
-      ['초록색으로 익었을 때 먼저 누르는 사람이 임자!', C.cooked],
-      ['너무 오래 두면 탄다 — 탄 건 눌러서 치우기', C.dim],
+      ['익으면(초록색) 집게 키로 먹기 — 먼저 집는 사람이 임자!', C.cooked],
+      ['너무 오래 두면 타서 버려진다', C.dim],
       [`가끔 피버 타임: ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
       ['시간이 갈수록 배가 빨리 고파진다', C.dim],
     ];
@@ -415,10 +436,10 @@ export function createRenderer(canvas) {
       const m = KEYMAP[pi];
       text('접시', x + 8, 152, { color: C.dim });
       text(m.plates.map(keyLabel).join(' '), x + 128, 152, { align: 'right' });
-      text('불판', x + 8, 174, { color: C.dim });
-      text(m.grill.slice(0, 4).map(keyLabel).join(' '), x + 128, 174, { align: 'right' });
-      text(m.grill.slice(4).map(keyLabel).join(' '), x + 128, 192, { align: 'right' });
-      text('밥 고기 버섯 상추', x + 68, 214, { align: 'center', color: C.dim });
+      text('밥 고기 버섯 상추', x + 128, 168, { align: 'right', color: C.dim });
+      text('집게', x + 8, 194, { color: C.dim });
+      text(m.tongs.map(keyLabel).join('    '), x + 128, 194, { align: 'right' });
+      text('고기 버섯', x + 128, 210, { align: 'right', color: C.dim });
     });
 
     // 랭킹
@@ -502,7 +523,7 @@ export function createRenderer(canvas) {
       ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon'],
       ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM', 'Comma', 'Period', 'Slash'],
     ];
-    const owner = (code) => KEYMAP.findIndex((m) => m.plates.includes(code) || m.grill.includes(code));
+    const owner = (code) => KEYMAP.findIndex((m) => m.plates.includes(code) || m.tongs.includes(code));
     let count = 0;
     rows.forEach((row, r) => {
       row.forEach((code, i) => {
@@ -517,7 +538,7 @@ export function createRenderer(canvas) {
         } else keyCap(x, y, keyLabel(code), pi, lit);
       });
     });
-    text(`동시에 인식된 게임 키: ${count}개`, 320, 218, { size: 24, align: 'center', color: count >= 8 ? C.cooked : C.text });
+    text(`동시에 인식된 게임 키: ${count}개`, 320, 218, { size: 24, align: 'center', color: count >= 6 ? C.cooked : C.text });
     text('빨간 키 = 1P, 파란 키 = 2P', 320, 254, { align: 'center', color: C.dim });
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
