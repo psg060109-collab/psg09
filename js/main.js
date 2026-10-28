@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { createGame, step, pressFood } from './game.js';
+import { createGame, step, pressFood, pressSlot } from './game.js';
 import { createCpu, DIFFICULTY, LEVELS } from './ai.js';
 import { attachInput } from './input.js';
 import { createRenderer, W, H } from './render.js';
@@ -96,7 +96,8 @@ function onKey(code, action) {
         return;
       }
       if (!action) return;
-      pressFood(game, action.player, action.index);
+      if (action.kind === 'plate') pressFood(game, 0, action.index);
+      else pressSlot(game, 0, action.index);
       break;
     case 'pause':
       if (code === 'Escape') screen = 'play';

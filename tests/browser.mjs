@@ -111,25 +111,25 @@ await check('키를 꾹 누르고 있어도(반복 입력) 한 번만 처리된�
   assert((await state(page, 'B.game.plates[3].stock')) === stock - 1);
 });
 
-await check('W로 고기를 올리고, 익으면 같은 W 키로 먹는다', async () => {
+await check('W로 고기를 올리고, 익으면 Shift+Q로 1번 칸을 먹는다', async () => {
   await page.waitForTimeout(400);
   await page.keyboard.press('KeyW');
   assert((await state(page, 'B.game.grill[0]?.owner')) === 0);
   await until(page, "B.game.grill[0]?.state === 'cooked'");
   const before = await state(page, 'B.game.players[0].stats.protein');
-  await page.keyboard.press('KeyW');
+  await page.keyboard.press('Shift+KeyQ');
   assert((await state(page, 'B.game.grill[0]')) === null);
   assert((await state(page, 'B.game.players[0].stats.protein')) > before + 25);
 });
 
-await check('E로 CPU가 올린 익은 버섯을 뺏어 먹고, 탄 음식은 저절로 사라진다', async () => {
+await check('Shift+U로 아랫줄 5번 칸의 CPU 버섯을 뺏어 먹고, 탄 음식은 저절로 사라진다', async () => {
   await page.evaluate(() => {
     const g = window.__bulpan.game;
     g.grill[4] = { food: 2, golden: false, state: 'cooked', progress: 3, cookTime: 3, cookedFor: 1, owner: 1 };
     g.grill[7] = { food: 1, golden: false, state: 'burnt', progress: 4.5, cookTime: 4.5, cookedFor: 4, burntFor: 0, owner: 1 };
   });
-  await page.waitForTimeout(400);
-  await page.keyboard.press('KeyE');
+  await page.waitForTimeout(600);
+  await page.keyboard.press('Shift+KeyU');
   assert((await state(page, 'B.game.grill[4]')) === null, '버섯을 먹지 않음');
   assert((await state(page, 'B.game.players[0].stolen')) === 1);
   await until(page, 'B.game.grill[7] === null', 4000);
@@ -146,10 +146,20 @@ await check('고추를 먹으면 CPU 자리에 매운 상태가 걸린다', asyn
   await until(page, 'B.game.players[1].spicy === 0', 4000);
 });
 
-await check('2P용이던 U·I·O·P는 이제 아무 일도 하지 않는다', async () => {
+await check('Shift 없이 누른 U·I·O·P는 아무 일도 하지 않는다', async () => {
   const snap = await state(page, 'JSON.stringify(B.game.plates.map((p) => p.stock))');
   for (const k of ['KeyU', 'KeyI', 'KeyO', 'KeyP']) await page.keyboard.press(k);
   assert((await state(page, 'JSON.stringify(B.game.plates.map((p) => p.stock))')) === snap);
+});
+
+await check('덜 익은 칸을 Shift로 누르면 헛손질로 잠깐 잠긴다', async () => {
+  await page.waitForTimeout(600);
+  await page.evaluate(() => {
+    window.__bulpan.game.grill[3] = { food: 1, golden: false, state: 'raw', progress: 0, cookTime: 99, cookedFor: 0, owner: 0 };
+  });
+  await page.keyboard.press('Shift+KeyR');
+  assert((await state(page, 'B.game.players[0].lock')) > 0.3);
+  assert((await state(page, 'B.game.grill[3]?.state')) === 'raw');
 });
 
 await check('ESC로 일시정지하면 시간이 멈추고, 다시 ESC로 계속된다', async () => {
@@ -231,12 +241,12 @@ await check('다시 하기(Space)는 수치·접시·불판을 모두 초기화�
   assert(fresh === true);
 });
 
-await check('키 테스트 모드에서 4개 키를 동시에 누르면 모두 인식된다', async () => {
+await check('키 테스트 모드에서 Shift와 함께 여러 키를 동시에 누르면 모두 인식된다', async () => {
   await page.reload();
   await page.waitForFunction(() => window.__bulpan);
   await page.keyboard.press('KeyT');
   assert((await state(page, 'B.screen')) === 'keytest');
-  const keys = ['KeyQ', 'KeyW', 'KeyE', 'KeyR'];
+  const keys = ['ShiftLeft', 'KeyQ', 'KeyW', 'KeyU', 'KeyI'];
   for (const k of keys) await page.keyboard.down(k);
   const held = await state(page, 'B.held');
   assert(keys.every((k) => held.includes(k)), JSON.stringify(held));

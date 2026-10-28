@@ -2,7 +2,9 @@
 // 고깃집 식탁을 위에서 내려다본 모습: 1P는 왼쪽, 2P는 오른쪽에 마주 앉는다.
 import { CONFIG, FOODS, STATS, STAT_LABEL, decayRate } from './config.js';
 import { feverWarning, feverRemaining } from './game.js';
-import { KEYMAP, keyLabel } from './input.js';
+import { KEYMAP, GAME_CODES, keyLabel } from './input.js';
+
+const GAME_KEYS = new Set(GAME_CODES);
 import { buildSprites } from './sprites.js';
 import { DIFFICULTY, LEVELS } from './ai.js';
 import { formatTime } from './ranking.js';
@@ -126,7 +128,11 @@ export function createRenderer(canvas) {
         }
         case 'fail':
           if (ev.reason === 'spicy') fx.shakeSeat[ev.player] = 0.2;
-          else if (ev.reason === 'empty' || ev.reason === 'full') {
+          else if (ev.slot !== undefined) {
+            const [x, y] = slotCenter(ev.slot);
+            const why = { none: '빈 칸!', raw: '덜 익음!', burnt: '탔음!' }[ev.reason];
+            if (why) floater(x, y - 20, ev.player ? 'CPU 헛손질' : why, C.p[ev.player], 12, 0.7);
+          } else if (ev.reason === 'empty' || ev.reason === 'full') {
             fx.shakePlate[ev.plate] = 0.25;
             floater(PLATE_X[ev.plate], PLATE_Y + 26, ev.player ? 'CPU 헛손질' : '헛손질!', C.p[ev.player], 12, 0.7);
           }
@@ -232,6 +238,18 @@ export function createRenderer(canvas) {
     rect(x - 7, y, 14, 14, C.ink);
     rect(x - 6, y + 1, 12, 12, C.p[pi]);
     text(keyLabel(code), x, y + 1, { align: 'center', color: '#fff', shadow: C.pDark[pi] });
+  }
+
+  // Shift 조합 키 칩: 왼쪽에 도트 화살표(⇧), 초록색 = 먹기
+  function shiftChip(x, y, code) {
+    rect(x - 12, y, 24, 14, C.ink);
+    rect(x - 11, y + 1, 22, 12, '#1f8a2a');
+    const ax = x - 8;
+    rect(ax + 2, y + 3, 1, 1, '#fff');
+    rect(ax + 1, y + 4, 3, 1, '#fff');
+    rect(ax, y + 5, 5, 1, '#fff');
+    rect(ax + 1, y + 6, 3, 4, '#fff');
+    text(keyLabel(code), x + 4, y + 1, { align: 'center', color: '#fff', shadow: '#0a3a10' });
   }
 
   // 식탁 상판 + 자리 매트 + 반찬 (한 번만 그려 둔다)
@@ -385,7 +403,7 @@ export function createRenderer(canvas) {
         rect(cx - 18, cy + 29, 36, 3, C.ink);
         rect(cx - 18, cy + 29, Math.round((36 * pl.timer) / food.refill), 3, g.fever.active ? C.fever : '#9ad0ff');
       }
-      keyChip(cx, cy + 34, KEYMAP[0].foods[i], 0);
+      keyChip(cx, cy + 34, KEYMAP.foods[i], 0);
     });
   }
 
@@ -461,6 +479,11 @@ export function createRenderer(canvas) {
         text('탐!', cx, cy + 6, { align: 'center', color: '#bbb' });
       }
     });
+    // 칸마다 먹기 키 (Shift + 키)
+    for (let i = 0; i < CONFIG.grillSlots; i++) {
+      const [cx, cy] = slotCenter(i);
+      shiftChip(cx, cy + 18, KEYMAP.slots[i]);
+    }
   }
 
   function drawEffects() {
@@ -512,25 +535,30 @@ export function createRenderer(canvas) {
     box(150, 110, 340, 138, '#2a1b11', C.ink);
     const rules = [
       ['단백질·탄수화물·비타민 중 하나라도 0이 되면 패배!', C.text],
-      ['밥·상추 키는 바로 먹기', C.text],
-      ['고기·버섯 키는 굽기 → 익으면 같은 키로 먹기', C.text],
+      ['QWER: 밥·상추는 먹기, 고기·버섯은 불판에 올리기', C.text],
+      ['Shift+QWER / Shift+UIOP: 불판 윗줄 / 아랫줄 칸 먹기', C.cooked],
       [`익자마자 먹으면 PERFECT! 영양 x${CONFIG.perfectMul}`, C.warn],
       [`황금 고기: 모든 수치 +${CONFIG.golden.gain}, 먼저 먹는 사람이 임자`, C.gold],
       [`청양고추: 먹으면 상대가 ${CONFIG.chili.stun}초 동안 못 먹는다`, C.danger],
-      ['빈 접시를 누르면 헛손질 (잠깐 멈춤)', C.dim],
+      ['빈 접시·빈 칸·덜 익은 칸을 누르면 헛손질 (잠깐 멈춤)', C.dim],
       [`피버 타임: ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
     ];
     rules.forEach(([r, col], i) => text(r, 320, 116 + i * 16, { align: 'center', color: col }));
 
     // 조작
     box(10, 110, 136, 138, C.pDark[0], C.ink);
-    text('조작', 78, 116, { size: 24, align: 'center', color: C.p[0] });
-    KEYMAP[0].foods.forEach((code, i) => {
-      const y = 148 + i * 24;
+    text('접시', 78, 114, { align: 'center', color: C.p[0] });
+    KEYMAP.foods.forEach((code, i) => {
+      const y = 130 + i * 17;
       keyChip(44, y, code, 0);
       sprite(sprites.plateFood[i], 60, y - 1, 1);
       text(FOODS[i].name, 80, y + 1);
     });
+    text('불판 먹기', 78, 200, { align: 'center', color: C.cooked });
+    shiftChip(36, 216, 'KeyQ');
+    text('~R 윗줄', 52, 217);
+    shiftChip(36, 232, 'KeyU');
+    text('~P 아랫줄', 52, 233);
 
     // 난이도
     box(494, 110, 136, 138, '#2a1b11', C.ink);
@@ -615,27 +643,25 @@ export function createRenderer(canvas) {
     ctx.drawImage(table, 0, 0);
     dim(0.5);
     text('키 테스트', 320, 16, { size: 24, align: 'center' });
-    text('네 키를 한꺼번에 꾹 눌러 보세요. 누른 키가 안 켜지면 고스팅이 있는 키보드예요.', 320, 50, { align: 'center', color: C.dim });
-    const row = KEYMAP[0].foods;
+    text('Shift를 누른 채 여러 키를 꾹 눌러 보세요. 누른 키가 안 켜지면 고스팅이 있는 키보드예요.', 320, 50, { align: 'center', color: C.dim });
+    const row = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP'];
     let count = 0;
+    const cap = (x, y, w, label, used, lit) => {
+      rect(x, y, w, 26, C.ink);
+      rect(x + 1, y + 1, w - 2, 24, !used ? '#3a3030' : lit ? C.p[0] : '#e9dcc6');
+      rect(x + 1, y + 20, w - 2, 5, !used ? '#3a3030' : lit ? C.pDark[0] : '#b8a68a');
+      text(label, x + w / 2, y + 6, { align: 'center', color: !used ? '#6a5a50' : lit ? '#fff' : C.ink, shadow: null });
+    };
     row.forEach((code, i) => {
-      const x = 254 + i * 34;
-      const y = 110;
-      const pi = KEYMAP.findIndex((m) => m.foods.includes(code));
+      const used = GAME_KEYS.has(code);
       const lit = held.has(code);
-      rect(x, y, 28, 26, C.ink);
-      if (pi < 0) {
-        rect(x + 1, y + 1, 26, 24, '#3a3030');
-        text(keyLabel(code), x + 14, y + 6, { align: 'center', color: '#6a5a50', shadow: null });
-        return;
-      }
-      if (lit) count++;
-      rect(x + 1, y + 1, 26, 24, lit ? C.p[pi] : '#e9dcc6');
-      rect(x + 1, y + 20, 26, 5, lit ? C.pDark[pi] : '#b8a68a');
-      text(keyLabel(code), x + 14, y + 6, { align: 'center', color: lit ? '#fff' : C.ink, shadow: null });
-      sprite(sprites.plateFood[KEYMAP[pi].foods.indexOf(code)], x + 6, y + 30, 1);
+      if (used && lit) count++;
+      cap(150 + i * 34, 104, 28, keyLabel(code), used, lit);
     });
-    text(`동시에 인식된 게임 키: ${count}개`, 320, 196, { size: 24, align: 'center', color: count >= 4 ? C.cooked : C.text });
+    const shift = held.has('ShiftLeft') || held.has('ShiftRight');
+    if (shift) count++;
+    cap(126, 140, 70, 'SHIFT', true, shift);
+    text(`동시에 인식된 게임 키: ${count}개`, 320, 196, { size: 24, align: 'center', color: count >= 5 ? C.cooked : C.text });
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
 

@@ -208,15 +208,17 @@ function canEat(g, pi) {
   return null;
 }
 
-function fail(g, pi, plate, reason) {
-  // 빈 접시·꽉 찬 불판을 누르면 헛손질: 잠시 손이 묶인다 (연타 방지)
-  if (reason === 'empty' || reason === 'full') g.players[pi].lock = g.cfg.fumbleLock;
-  emit(g, { type: 'fail', player: pi, plate, reason });
+// 헛손질: 빈 접시·꽉 찬 불판·빈 칸·덜 익은 칸·탄 칸을 누르면 잠시 손이 묶인다 (연타 방지)
+const FUMBLES = ['empty', 'full', 'none', 'raw', 'burnt'];
+
+function fail(g, pi, where, reason) {
+  if (FUMBLES.includes(reason)) g.players[pi].lock = g.cfg.fumbleLock;
+  emit(g, { type: 'fail', player: pi, ...where, reason });
   return reason;
 }
 
-// 불판에서 이 음식 중 익은 것, 곧 탈 것부터 (황금 고기가 익었으면 그것 먼저)
-function findCooked(g, foodIndex) {
+// 불판에서 이 음식 중 익은 것, 곧 탈 것부터 (황금 고기가 익었으면 그것 먼저). CPU가 칸을 고를 때 쓴다
+export function findCooked(g, foodIndex) {
   let best = -1;
   g.grill.forEach((it, i) => {
     if (!it || it.food !== foodIndex || it.state !== 'cooked') return;
@@ -227,9 +229,9 @@ function findCooked(g, foodIndex) {
   return best;
 }
 
-// 음식 키 하나로 모든 동작을 한다.
+// 접시 키 (Q W E R)
 //  밥·상추: 바로 먹기 (상추 접시에 고추가 있으면 고추부터)
-//  고기·버섯: 불판에 익은 게 있으면 먹기, 없으면 접시에서 불판에 올리기
+//  고기·버섯: 접시에서 불판 빈자리에 올리기
 // 결과: 'eat' | 'chili' | 'place' | 'empty' | 'full' | 'cooldown' | 'spicy' | 'locked' | null
 export function pressFood(g, pi, i) {
   if (g.over) return null;
@@ -240,7 +242,7 @@ export function pressFood(g, pi, i) {
   if (!food.grill) {
     if (plate.special === 'chili') {
       const block = canEat(g, pi);
-      if (block) return fail(g, pi, i, block);
+      if (block) return fail(g, pi, { plate: i }, block);
       plate.special = null;
       g.nextChili = g.t + between(g.rng, g.cfg.chili.gapMin, g.cfg.chili.gapMax);
       const p = g.players[pi];
@@ -251,32 +253,18 @@ export function pressFood(g, pi, i) {
       emit(g, { type: 'chili', player: pi, target: 1 - pi, gains });
       return 'chili';
     }
-    if (plate.stock <= 0) return fail(g, pi, i, 'empty');
+    if (plate.stock <= 0) return fail(g, pi, { plate: i }, 'empty');
     const block = canEat(g, pi);
-    if (block) return fail(g, pi, i, block);
+    if (block) return fail(g, pi, { plate: i }, block);
     plate.stock--;
     eat(g, pi, i);
     return 'eat';
   }
 
-  const ready = findCooked(g, i);
-  if (ready >= 0) {
-    const block = canEat(g, pi);
-    if (block) return fail(g, pi, i, block);
-    const it = g.grill[ready];
-    g.grill[ready] = null;
-    const stolen = it.owner !== pi;
-    if (stolen) g.players[pi].stolen++;
-    const perfect = it.cookedFor <= g.cfg.perfectWindow;
-    eat(g, pi, i, { golden: it.golden, perfect });
-    emit(g, { type: 'grillEat', player: pi, slot: ready, stolen, perfect, golden: it.golden });
-    return 'eat';
-  }
-
   const golden = plate.special === 'golden';
-  if (!golden && plate.stock <= 0) return fail(g, pi, i, 'empty');
+  if (!golden && plate.stock <= 0) return fail(g, pi, { plate: i }, 'empty');
   const slot = PLACE_ORDER[pi].find((k) => g.grill[k] === null);
-  if (slot === undefined) return fail(g, pi, i, 'full');
+  if (slot === undefined) return fail(g, pi, { plate: i }, 'full');
   if (golden) {
     plate.special = null;
     g.nextGolden = g.t + between(g.rng, g.cfg.golden.gapMin, g.cfg.golden.gapMax);
@@ -292,4 +280,23 @@ export function pressFood(g, pi, i) {
   };
   emit(g, { type: 'place', player: pi, slot, food: i, golden });
   return 'place';
+}
+
+// 불판 칸 키 (Shift+Q W E R = 윗줄 1~4, Shift+U I O P = 아랫줄 5~8): 그 칸의 익은 음식을 먹는다
+// 결과: 'eat' | 'none' | 'raw' | 'burnt' | 'cooldown' | 'spicy' | 'locked' | null
+export function pressSlot(g, pi, slot) {
+  if (g.over) return null;
+  if (g.players[pi].lock > 0) return 'locked';
+  const it = g.grill[slot];
+  if (!it) return fail(g, pi, { slot }, 'none');
+  if (it.state !== 'cooked') return fail(g, pi, { slot }, it.state);
+  const block = canEat(g, pi);
+  if (block) return fail(g, pi, { slot }, block);
+  g.grill[slot] = null;
+  const stolen = it.owner !== pi;
+  if (stolen) g.players[pi].stolen++;
+  const perfect = it.cookedFor <= g.cfg.perfectWindow;
+  eat(g, pi, it.food, { golden: it.golden, perfect });
+  emit(g, { type: 'grillEat', player: pi, slot, stolen, perfect, golden: it.golden });
+  return 'eat';
 }

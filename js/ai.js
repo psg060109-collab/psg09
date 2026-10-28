@@ -1,6 +1,6 @@
 // 컴퓨터 상대(CPU)와 밸런스 검수용 봇. 사람처럼 일정 간격(반응 시간)마다 키를 한 번씩 누른다.
 import { FOODS, STATS } from './config.js';
-import { pressFood, feverWarning, mulberry32 } from './game.js';
+import { pressFood, pressSlot, findCooked, feverWarning, mulberry32 } from './game.js';
 
 const RICE = 0, MEAT = 1, MUSH = 2, LETTUCE = 3;
 const FOOD_FOR = { carb: [RICE], protein: [MEAT], vitamin: [MUSH, LETTUCE] };
@@ -12,17 +12,17 @@ export function makeGreedy({ specials = true } = {}) {
     const room = (fi) => STATS.every((s) => !FOODS[fi].gain[s] || p.stats[s] + FOODS[fi].gain[s] * 0.5 <= g.cfg.statMax);
     const order = [...STATS].sort((a, b) => p.stats[a] - p.stats[b]);
     const cooked = (fi) => g.grill.some((it) => it && it.food === fi && it.state === 'cooked');
-    const goldenCooked = g.grill.some((it) => it && it.golden && it.state === 'cooked');
+    const goldenSlot = g.grill.findIndex((it) => it && it.golden && it.state === 'cooked');
     const ready = p.cooldown <= 0 && p.spicy <= 0;
     const score = (fi) => Math.min(...STATS.filter((s) => FOODS[fi].gain[s] > 0).map((s) => order.indexOf(s)));
 
     if (ready) {
       // 1. 황금 고기가 익었으면 무조건, 고추가 나오면 바로 (상대 공격)
-      if (specials && goldenCooked) return pressFood(g, pi, MEAT);
+      if (specials && goldenSlot >= 0) return pressSlot(g, pi, goldenSlot);
       if (specials && g.plates[LETTUCE].special === 'chili') return pressFood(g, pi, LETTUCE);
       // 2. 익은 음식 (가장 부족한 수치부터)
       const eatable = [MEAT, MUSH].filter((fi) => cooked(fi) && room(fi)).sort((a, b) => score(a) - score(b));
-      if (eatable.length) return pressFood(g, pi, eatable[0]);
+      if (eatable.length) return pressSlot(g, pi, findCooked(g, eatable[0]));
       // 3. 가장 부족한 수치를 바로 먹는 음식으로
       for (const s of order) {
         if (p.stats[s] > 70) break;
@@ -40,8 +40,7 @@ export function makeGreedy({ specials = true } = {}) {
     if (empty > 0 && mine < want) {
       const need = order.find((s) => s === 'protein' || s === 'vitamin');
       const pref = need === 'protein' ? [MEAT, MUSH] : [MUSH, MEAT];
-      // 익은 게 있으면 키가 '먹기'가 되므로, 올리려면 그 음식이 익은 게 없어야 한다
-      for (const fi of pref) if (g.plates[fi].stock > 0 && !cooked(fi)) return pressFood(g, pi, fi);
+      for (const fi of pref) if (g.plates[fi].stock > 0) return pressFood(g, pi, fi);
     }
 
     // 5. 여유가 있으면 바로 먹는 음식으로 수치 보충
@@ -56,8 +55,11 @@ export function makeGreedy({ specials = true } = {}) {
 export const BOTS = {
   idle() {},
 
+  // 키 12개(접시 4 + 불판 칸 8) 중 아무거나
   random(g, pi, rng) {
-    pressFood(g, pi, Math.floor(rng() * 4));
+    const k = Math.floor(rng() * 12);
+    if (k < 4) pressFood(g, pi, k);
+    else pressSlot(g, pi, k - 4);
   },
 
   greedy: makeGreedy(),

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, FOODS, decayRate } from '../js/config.js';
-import { createGame, step, pressFood, feverWarning } from '../js/game.js';
+import { createGame, step, pressFood, pressSlot, feverWarning } from '../js/game.js';
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking } from '../js/ranking.js';
@@ -33,13 +33,16 @@ test('스프라이트는 모두 16×16', () => {
   for (const [name, rows] of Object.entries(SPRITE_ROWS)) assert.ok(validateRows(rows), name);
 });
 
-test('키는 음식별 4개 Q·W·E·R (사람은 1P뿐, 2P는 CPU)', () => {
-  assert.deepEqual(lookup('KeyQ'), { player: 0, index: RICE });
-  assert.deepEqual(lookup('KeyW'), { player: 0, index: MEAT });
-  assert.deepEqual(lookup('KeyE'), { player: 0, index: MUSH });
-  assert.deepEqual(lookup('KeyR'), { player: 0, index: LETTUCE });
-  assert.equal(GAME_CODES.length, 4);
-  assert.equal(lookup('KeyU'), null);
+test('키: QWER = 접시, Shift+QWER = 불판 윗줄 1~4, Shift+UIOP = 아랫줄 5~8', () => {
+  assert.deepEqual(lookup('KeyQ'), { kind: 'plate', index: RICE });
+  assert.deepEqual(lookup('KeyR'), { kind: 'plate', index: LETTUCE });
+  assert.deepEqual(lookup('KeyQ', true), { kind: 'slot', index: 0 });
+  assert.deepEqual(lookup('KeyR', true), { kind: 'slot', index: 3 });
+  assert.deepEqual(lookup('KeyU', true), { kind: 'slot', index: 4 });
+  assert.deepEqual(lookup('KeyP', true), { kind: 'slot', index: 7 });
+  assert.equal(lookup('KeyU'), null); // Shift 없는 UIOP는 아무 일도 안 함
+  assert.equal(lookup('KeyT', true), null);
+  assert.equal(GAME_CODES.length, 8);
 });
 
 test('시간이 지나면 두 플레이어의 세 수치가 같은 속도로 줄어든다', () => {
@@ -117,61 +120,62 @@ test('불판이 꽉 차 있으면 올리지 못하고 헛손질이 된다', () =
   assert.ok(g.players[0].lock > 0);
 });
 
-test('고기 키: 익은 고기가 있으면 먹는다 (덜 익은 것만 있으면 하나 더 올린다)', () => {
+test('고기 키는 익은 고기가 있어도 먹지 않고 하나 더 올린다 (먹기는 Shift 칸 키)', () => {
+  const g = newGame();
+  g.grill[0] = item(MEAT, 'cooked', { cookedFor: 1 });
+  assert.equal(pressFood(g, 0, MEAT), 'place');
+  assert.ok(g.grill[0] && g.grill[1]);
+});
+
+test('칸 키: 익은 칸을 누르면 그 음식을 먹고, 고기는 단백질 +30', () => {
   const g = newGame();
   pressFood(g, 0, MEAT);
   topUp(g);
-  run(g, 4.3);
-  assert.equal(pressFood(g, 0, MEAT), 'place'); // 아직 덜 익음 → 하나 더 올림
-  assert.ok(g.grill[0] && g.grill[1]);
-  run(g, 0.3);
-  assert.equal(g.grill[0].state, 'cooked');
+  run(g, 4.6 + CONFIG.perfectWindow);
   g.players[0].stats.protein = 50;
-  run(g, CONFIG.perfectWindow + 0.1); // 퍼펙트 구간이 지난 뒤
-  g.players[0].stats.protein = 50;
-  assert.equal(pressFood(g, 0, MEAT), 'eat');
+  assert.equal(pressSlot(g, 0, 0), 'eat');
   assert.equal(g.players[0].stats.protein, 80);
   assert.equal(g.grill[0], null);
 });
 
-test('고기 키는 버섯을 먹지 않는다', () => {
-  const g = newGame();
-  g.grill[2] = item(MUSH, 'cooked', { cookedFor: 2 });
-  assert.equal(pressFood(g, 0, MEAT), 'place');
-  assert.ok(g.grill[2]);
-});
-
-test('익은 것이 여러 개면 곧 탈 것(오래 익은 것)부터 먹는다', () => {
+test('칸 키: 고른 칸만 먹는다 (다른 칸은 그대로)', () => {
   const g = newGame();
   g.grill[1] = item(MEAT, 'cooked', { cookedFor: 1 });
-  g.grill[5] = item(MEAT, 'cooked', { cookedFor: 3 });
-  g.grill[6] = item(MEAT, 'raw');
-  pressFood(g, 1, MEAT);
-  assert.equal(g.grill[5], null);
-  assert.ok(g.grill[1] && g.grill[6]);
+  g.grill[6] = item(MUSH, 'cooked', { cookedFor: 1 });
+  assert.equal(pressSlot(g, 0, 6), 'eat');
+  assert.equal(g.grill[6], null);
+  assert.ok(g.grill[1]);
+  assert.equal(g.players[0].eaten.mushroom, 1);
 });
 
-test('1P가 올린 고기를 2P가 먼저 먹을 수 있다 (뺏어먹기 기록)', () => {
+test('칸 키 헛손질: 빈 칸·덜 익은 칸·탄 칸을 누르면 0.5초 잠김', () => {
+  for (const [state, reason] of [[null, 'none'], ['raw', 'raw'], ['burnt', 'burnt']]) {
+    const g = newGame();
+    if (state) g.grill[2] = item(MEAT, state);
+    assert.equal(pressSlot(g, 0, 2), reason);
+    assert.ok(g.players[0].lock > 0, reason);
+    assert.equal(pressFood(g, 0, RICE), 'locked');
+    if (state) assert.ok(g.grill[2]);
+  }
+});
+
+test('상대가 올린 고기를 먼저 먹을 수 있다 (뺏어먹기 기록)', () => {
   const g = newGame();
   pressFood(g, 0, MEAT);
   topUp(g);
   run(g, 4.6 + CONFIG.perfectWindow);
   g.players[1].stats.protein = 10;
-  assert.equal(pressFood(g, 1, MEAT), 'eat');
+  assert.equal(pressSlot(g, 1, 0), 'eat');
   assert.equal(g.players[1].stats.protein, 40);
   assert.equal(g.players[1].stolen, 1);
 });
 
-test('익고 4초가 지나면 타고, 탄 건 먹히지 않으며, 2초 뒤 저절로 치워진다', () => {
+test('익고 4초가 지나면 타고, 2초 뒤 저절로 치워진다', () => {
   const g = newGame();
   pressFood(g, 0, MUSH);
   topUp(g);
   run(g, 3.1 + 4.1);
   assert.equal(g.grill[0].state, 'burnt');
-  const before = { ...g.players[0].stats };
-  g.plates[MUSH].stock = 0;
-  assert.equal(pressFood(g, 0, MUSH), 'empty'); // 탄 건 안 먹히고, 접시도 비어 헛손질
-  assert.deepEqual(g.players[0].stats, before);
   topUp(g);
   run(g, 1.6);
   assert.ok(g.grill[0]);
@@ -192,12 +196,12 @@ test('PERFECT: 익은 직후 0.6초 안에 먹으면 영양이 1.5배', () => {
   const g = newGame();
   g.grill[0] = item(MEAT, 'cooked', { cookedFor: 0.3 });
   g.players[0].stats.protein = 10;
-  pressFood(g, 0, MEAT);
+  pressSlot(g, 0, 0);
   assert.equal(g.players[0].stats.protein, 10 + 45);
   assert.equal(g.players[0].perfect, 1);
   g.grill[1] = item(MEAT, 'cooked', { cookedFor: 0.8 });
   g.players[1].stats.protein = 10;
-  pressFood(g, 1, MEAT);
+  pressSlot(g, 1, 1);
   assert.equal(g.players[1].stats.protein, 40);
   assert.equal(g.players[1].perfect, 0);
 });
@@ -221,18 +225,9 @@ test('황금 고기: 30~45초 사이 고기 접시에 나오고, 굽는 데 6초
   assert.equal(g.grill[slot].state, 'raw');
   run(g, 0.2 + CONFIG.perfectWindow);
   for (const s in g.players[0].stats) g.players[0].stats[s] = 20;
-  assert.equal(pressFood(g, 0, MEAT), 'eat');
+  assert.equal(pressSlot(g, 0, slot), 'eat');
   assert.deepEqual(g.players[0].stats, { protein: 55, carb: 55, vitamin: 55 });
   assert.equal(g.players[0].golden, 1);
-});
-
-test('황금 고기가 일반 고기와 함께 익어 있으면 황금 고기부터 먹는다', () => {
-  const g = newGame();
-  g.grill[0] = item(MEAT, 'cooked', { cookedFor: 3 });
-  g.grill[1] = item(MEAT, 'cooked', { cookedFor: 1, golden: true, cookTime: 6 });
-  pressFood(g, 0, MEAT);
-  assert.equal(g.grill[1], null);
-  assert.ok(g.grill[0]);
 });
 
 test('황금 고기는 가져간 뒤에야 다음 것이 50~65초 뒤로 예약된다', () => {
