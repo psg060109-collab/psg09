@@ -34,12 +34,12 @@ test('스프라이트는 모두 16×16', () => {
   for (const [name, rows] of Object.entries(SPRITE_ROWS)) assert.ok(validateRows(rows), name);
 });
 
-test('음식 도트(32×32)는 모두 그려지고, 날것·익음·탐 모습이 서로 다르다', () => {
+test('음식 도트(탑뷰 44×44)는 모두 그려지고, 날것·익음·탐 모습이 서로 다르다', () => {
   const f = buildFoodPixels();
   const filled = (px) => px.c.filter(Boolean).length;
   for (const px of [f.rice, f.lettuce, f.chili, ...['meat', 'golden', 'mushroom'].flatMap((k) => Object.values(f[k]))]) {
     assert.equal(px.c.length, SIZE * SIZE);
-    assert.ok(filled(px) > 200, '너무 작게 그려짐');
+    assert.ok(filled(px) > 300, '너무 작게 그려짐');
   }
   for (const k of ['meat', 'golden', 'mushroom']) {
     const [r, c, b] = ['raw', 'cooked', 'burnt'].map((st) => f[k][st].c.join());

@@ -33,11 +33,11 @@ const C = {
 
 // 공용 접시 4개 (밥 · 고기 · 버섯 · 상추), 식탁 위쪽 가운데
 const PLATE_X = [212, 284, 356, 428];
-const PLATE_Y = 82;
+const PLATE_Y = 86;
 // 사각 불판과 그 위 8자리
 const GRILL = { x: 180, y: 132, w: 280, h: 170 };
 const SLOT_X = [215, 285, 355, 425];
-const SLOT_Y = [172, 252];
+const SLOT_Y = [164, 241];
 // 자리 (1P 왼쪽, 2P 오른쪽)
 const SEAT_X = [12, 472];
 const SEAT_W = 156;
@@ -253,6 +253,42 @@ export function createRenderer(canvas) {
     ctx.drawImage(img, Math.round(x), Math.round(y), 16 * scale, 16 * scale);
   }
 
+  // 44px 음식 그림을 (cx, cy) 가운데에 그린다
+  function art(img, cx, cy, zoom = 1) {
+    const w = img.width * zoom;
+    const h = img.height * zoom;
+    ctx.drawImage(img, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
+  }
+
+  // 음식 모양을 따라 그리는 빛 테두리 (익음 = 초록, 퍼펙트 = 금색)
+  const silCache = new Map();
+  function silhouette(img, color) {
+    let byColor = silCache.get(img);
+    if (!byColor) silCache.set(img, (byColor = new Map()));
+    let c = byColor.get(color);
+    if (c) return c;
+    c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const t = c.getContext('2d');
+    t.drawImage(img, 0, 0);
+    t.globalCompositeOperation = 'source-in';
+    t.fillStyle = color;
+    t.fillRect(0, 0, c.width, c.height);
+    byColor.set(color, c);
+    return c;
+  }
+  function glow(img, cx, cy, color, width = 2) {
+    const sil = silhouette(img, color);
+    const x = Math.round(cx - img.width / 2);
+    const y = Math.round(cy - img.height / 2);
+    for (let d = width; d >= 1; d--) {
+      ctx.globalAlpha = d === width ? 0.55 : 1;
+      for (const [dx, dy] of [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, d], [-d, d], [d, -d]]) ctx.drawImage(sil, x + dx, y + dy);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function blink(rate = 4) {
     return Math.floor(fx.time * rate) % 2 === 0;
   }
@@ -302,16 +338,16 @@ export function createRenderer(canvas) {
     // 나무 상판: 판자마다 색을 조금씩 달리하고 결·옹이를 넣는다
     t.fillStyle = '#140c08';
     t.fillRect(0, 0, W, H);
-    const planks = ['#6b4428', '#704829', '#664026', '#6e462a'];
+    const planks = ['#5e3c24', '#613e25', '#5b3a23', '#603d25'];
     for (let y = 4, k = 0; y < H - 4; y += 24, k++) {
       t.fillStyle = planks[k % planks.length];
       t.fillRect(4, y, W - 8, 24);
-      t.fillStyle = '#7e5634';
+      t.fillStyle = '#6a4630';
       t.fillRect(4, y, W - 8, 1);
       t.fillStyle = '#4a2c18';
       t.fillRect(4, y + 23, W - 8, 1);
-      for (let n = 0; n < 18; n++) {
-        t.fillStyle = rnd() < 0.5 ? '#5e3a22' : '#7a5232';
+      for (let n = 0; n < 10; n++) {
+        t.fillStyle = rnd() < 0.5 ? '#573821' : '#64412a';
         t.fillRect(4 + Math.floor(rnd() * (W - 48)), y + 3 + Math.floor(rnd() * 18), 8 + Math.floor(rnd() * 36), 1);
       }
       // 판자 이음매 + 옹이
@@ -365,10 +401,8 @@ export function createRenderer(canvas) {
     });
     // 반찬 그릇 (김치 · 쌈장 · 마늘 · 파절이)
     const bowls = [
-      [206, 12, '#c83a26', '#f07a4a'],
-      [248, 9, '#7a4018', '#a8642a'],
-      [392, 9, '#efe8d8', '#d0c6ae'],
-      [434, 12, '#4a9a32', '#86cc5a'],
+      [196, 12, '#c83a26', '#f07a4a'],
+      [444, 12, '#4a9a32', '#86cc5a'],
     ];
     for (const [x, r, a, b] of bowls) {
       const y = 330;
@@ -416,8 +450,8 @@ export function createRenderer(canvas) {
     STATS.forEach((s, row) => {
       const y = gaugeY(row);
       const v = p.stats[s];
-      sprite(icons[s], x + 14, y + 1, 1);
-      text(STAT_LABEL[s], x + 34, y + 3, { color: C.dim });
+      art(icons[s], x + 22, y + 8);
+      text(STAT_LABEL[s], x + 36, y + 3, { color: C.dim });
       text(String(Math.ceil(v)), x + SEAT_W - 16, y + 3, { align: 'right', color: v <= 30 ? (v <= 15 ? C.danger : C.warn) : C.text });
       let col = C.stat[s];
       if (v <= 15) col = blink(6) ? C.danger : '#7a1a1a';
@@ -438,7 +472,7 @@ export function createRenderer(canvas) {
     if (p.lastFood) {
       const { food, golden } = p.lastFood;
       const img = golden ? sprites.golden.cooked : FOODS[food].grill ? sprites[FOODS[food].id].cooked : sprites.plateFood[food];
-      sprite(img, cx - 16, cy - 16 - (fx.bite[pi] > 0 ? 3 : 0));
+      art(img, cx, cy - (fx.bite[pi] > 0 ? 3 : 0));
     }
     // 젓가락(나무) · 숟가락(스테인리스)
     const hx = pi === 0 ? x + 12 : x + SEAT_W - 18;
@@ -465,7 +499,7 @@ export function createRenderer(canvas) {
     if (p.spicy > 0) {
       ctx.fillStyle = `rgba(255,40,20,${0.25 + 0.15 * Math.sin(fx.time * 14)})`;
       ctx.fillRect(SEAT_X[pi], 36, SEAT_W, 316);
-      sprite(sprites.chili, cx - 32, cy - 32, 4);
+      art(sprites.chili, cx, cy - 4);
       text(`매워! ${p.spicy.toFixed(1)}`, cx, cy + 34, { size: 24, align: 'center', color: '#fff', shadow: '#7a0a0a' });
     }
     if (p.lock > 0) text('헛손질!', cx, 186, { align: 'center', color: C.warn });
@@ -476,24 +510,24 @@ export function createRenderer(canvas) {
     rect(272, 6, 96, 1, 'rgba(255,255,255,0.12)');
     text(formatTime(g.t), 320, 7, { size: 24, align: 'center' });
     const late = g.t > CONFIG.rampStart;
-    box(262, 336, 116, 18, 'rgba(20,10,6,0.7)', 'rgba(0,0,0,0.7)');
-    text(`배고픔 ${decayRate(g.t).toFixed(1)}/초`, 320, 339, { align: 'center', color: late ? C.danger : C.dim });
+    box(262, 338, 116, 18, 'rgba(20,10,6,0.7)', 'rgba(0,0,0,0.7)');
+    text(`배고픔 ${decayRate(g.t).toFixed(1)}/초`, 320, 341, { align: 'center', color: late ? C.danger : C.dim });
   }
 
   function drawFeverBanner(g) {
-    const y = 306;
+    const y = 310;
     if (g.fever.active) {
       const rem = feverRemaining(g);
-      box(196, y, 248, 24, blink(8) ? '#b8360f' : '#d9581a', C.ink);
-      rect(198, y + 1, 244, 1, 'rgba(255,255,255,0.3)');
-      text(`FEVER TIME! 굽기 x${CONFIG.fever.cookMul}`, 320, y + 5, { align: 'center', color: '#fff3c0', shadow: '#5a1a08' });
-      rect(204, y + 20, 232, 2, '#5a1a08');
-      rect(204, y + 20, Math.round((232 * rem) / CONFIG.fever.duration), 2, '#ffe14a');
+      box(220, y, 200, 24, blink(8) ? '#b8360f' : '#d9581a', C.ink);
+      rect(222, y + 1, 196, 1, 'rgba(255,255,255,0.3)');
+      text(`FEVER! 굽기 x${CONFIG.fever.cookMul}`, 320, y + 5, { align: 'center', color: '#fff3c0', shadow: '#5a1a08' });
+      rect(226, y + 20, 188, 2, '#5a1a08');
+      rect(226, y + 20, Math.round((188 * rem) / CONFIG.fever.duration), 2, '#ffe14a');
     } else if (feverWarning(g)) {
       const n = Math.ceil(g.fever.start - g.t);
       if (blink(6)) {
-        box(206, y, 228, 24, '#5a2a0a', C.ink);
-        text(`피버 타임 ${n}초 전! 불판을 채워라`, 320, y + 5, { align: 'center', color: C.fever });
+        box(220, y, 200, 24, '#5a2a0a', C.ink);
+        text(`피버 ${n}초 전! 불판을 채워라`, 320, y + 5, { align: 'center', color: C.fever });
       }
     }
   }
@@ -503,42 +537,38 @@ export function createRenderer(canvas) {
       const cx = PLATE_X[i] + shake(fx.shakePlate[i]);
       const cy = PLATE_Y;
       const pl = g.plates[i];
-      // 이름표
-      const tw = 30;
-      rect(cx - tw / 2, 37, tw, 15, 'rgba(20,10,6,0.6)');
-      text(food.name, cx, 39, { align: 'center', color: C.text });
+      // 이름표: [키] 이름
+      rect(cx - 26, 36, 52, 16, 'rgba(20,10,6,0.75)');
+      const nameW = glyph(food.name, 12, C.text).width - 2;
+      const left = Math.round(cx - (14 + 4 + nameW) / 2);
+      keyChip(left + 7, 37, KEYMAP.foods[i], 0);
+      text(food.name, left + 18, 38, { color: C.text });
       // 접시: 그림자 → 테두리 → 안쪽 → 하이라이트
-      ellipse(cx + 3, cy + 4, 27, 26, 'rgba(0,0,0,0.35)');
-      disc(cx, cy, 27, C.ink);
-      disc(cx, cy, 26, '#b8bec8');
-      disc(cx, cy, 24, '#dce0e8');
-      disc(cx, cy, 20, '#eef1f5');
-      rect(cx - 16, cy - 18, 6, 1, '#ffffff');
-      rect(cx - 18, cy - 16, 2, 4, '#ffffff');
-      // 음식 한 개 + 재고 점
+      ellipse(cx + 3, cy + 4, 30, 29, 'rgba(0,0,0,0.35)');
+      disc(cx, cy, 30, C.ink);
+      disc(cx, cy, 29, '#b8bec8');
+      disc(cx, cy, 27, '#dce0e8');
+      disc(cx, cy, 24, '#eef1f5');
+      rect(cx - 19, cy - 21, 6, 1, '#ffffff');
+      rect(cx - 21, cy - 19, 2, 4, '#ffffff');
       if (pl.special) {
-        sprite(pl.special === 'golden' ? sprites.golden.raw : sprites.chili, cx - 16, cy - 20);
-        if (blink(5)) {
-          rect(cx + 10, cy - 20, 2, 2, '#fff');
-          rect(cx - 13, cy + 2, 1, 1, '#fff');
-        }
+        art(pl.special === 'golden' ? sprites.golden.raw : sprites.chili, cx, cy);
       } else if (pl.stock > 0) {
-        ellipse(cx + 1, cy + 7, 11, 3, 'rgba(0,0,0,0.12)');
-        sprite(sprites.plateFood[i], cx - 16, cy - 20);
+        art(sprites.plateFood[i], cx, cy);
       } else {
-        text('비었음', cx, cy - 10, { align: 'center', color: '#9a9080', shadow: null });
+        text('비었음', cx, cy - 6, { align: 'center', color: '#9a9080', shadow: null });
       }
+      // 재고 점 + 보충 바
       for (let k = 0; k < CONFIG.plateMax; k++) {
-        const px = cx - 10 + k * 8;
-        rect(px - 1, cy + 11, 6, 6, C.ink);
-        rect(px, cy + 12, 4, 4, k < pl.stock ? '#ffcf3a' : '#8a8478');
-        if (k < pl.stock) rect(px, cy + 12, 2, 1, '#fff6c0');
+        const px = cx - 11 + k * 8;
+        rect(px - 1, cy + 31, 6, 6, C.ink);
+        rect(px, cy + 32, 4, 4, k < pl.stock ? '#ffcf3a' : '#5a5448');
+        if (k < pl.stock) rect(px, cy + 32, 2, 1, '#fff6c0');
       }
       if (pl.stock < CONFIG.plateMax) {
-        rect(cx - 18, cy + 29, 36, 3, C.ink);
-        rect(cx - 18, cy + 29, Math.round((36 * pl.timer) / food.refill), 3, g.fever.active ? C.fever : '#9ad0ff');
+        rect(cx - 18, cy + 39, 36, 3, C.ink);
+        rect(cx - 18, cy + 39, Math.round((36 * pl.timer) / food.refill), 3, g.fever.active ? C.fever : '#9ad0ff');
       }
-      keyChip(cx, cy + 34, KEYMAP.foods[i], 0);
     });
   }
 
@@ -559,12 +589,12 @@ export function createRenderer(canvas) {
       c.width = COAL.w;
       c.height = COAL.h;
       const t = c.getContext('2d');
-      t.fillStyle = hot ? '#4a1006' : '#0c0a0a';
+      t.fillStyle = hot ? '#3a0c04' : '#0c0a0a';
       t.fillRect(0, 0, COAL.w, COAL.h);
       for (const l of lumps) {
-        t.fillStyle = hot ? '#2a1a14' : '#26201c';
+        t.fillStyle = hot ? '#221612' : '#1c1816';
         t.fillRect(l.x, l.y, l.w, l.h);
-        t.fillStyle = hot ? '#4a2a1c' : '#3a322c';
+        t.fillStyle = hot ? '#3a2218' : '#262020';
         t.fillRect(l.x, l.y, l.w, 1);
         t.fillRect(l.x, l.y, 1, l.h);
         t.fillStyle = hot ? '#ff7a1a' : '#161210';
@@ -604,7 +634,7 @@ export function createRenderer(canvas) {
     rect(COAL.x - 1, COAL.y - 1, COAL.w + 2, COAL.h + 2, '#202026');
     // 숯불
     ctx.drawImage(coalDim, COAL.x, COAL.y);
-    ctx.globalAlpha = fever ? 0.85 + 0.15 * Math.sin(fx.time * 10) : 0.3 + 0.15 * Math.sin(fx.time * 1.6);
+    ctx.globalAlpha = fever ? 0.85 + 0.15 * Math.sin(fx.time * 10) : 0.22 + 0.1 * Math.sin(fx.time * 1.6);
     ctx.drawImage(coalHot, COAL.x, COAL.y);
     ctx.globalAlpha = 1;
     for (const s of sparks) {
@@ -615,53 +645,46 @@ export function createRenderer(canvas) {
     for (const rx of [COAL.x + Math.round(COAL.w / 3), COAL.x + Math.round((2 * COAL.w) / 3)]) rect(rx, COAL.y, 2, COAL.h, '#2e2e36');
     for (let y = COAL.y + 3; y < COAL.y + COAL.h - 1; y += 8) {
       rect(COAL.x, y + 2, COAL.w, 1, 'rgba(0,0,0,0.5)');
-      rect(COAL.x, y, COAL.w, 2, '#5c5c68');
-      rect(COAL.x, y, COAL.w, 1, '#9a9aa8');
+      rect(COAL.x, y, COAL.w, 2, '#3e3e48');
+      rect(COAL.x, y, COAL.w, 1, '#5e5e6a');
     }
 
     g.grill.forEach((it, i) => {
       const [cx, cy] = slotCenter(i);
-      if (fx.flashSlot[i] > 0) rect(cx - 28, cy - 30, 56, 52, 'rgba(255,255,255,0.4)');
+      if (fx.flashSlot[i] > 0) rect(cx - 26, cy - 26, 52, 52, 'rgba(255,255,255,0.4)');
       if (!it) return;
-      const set = it.golden ? sprites.golden : sprites[FOODS[it.food].id];
-
-      if (it.state === 'cooked') {
-        // 퍼펙트 구간은 노랑·흰색으로 빠르게, 곧 탈 때는 초록이 빠르게 깜빡임
-        const perfect = it.cookedFor <= CONFIG.perfectWindow;
-        const edge = perfect ? (blink(12) ? C.warn : '#fff') : blink(it.cookedFor > CONFIG.burnAfter - 1.5 ? 10 : 3) ? C.cooked : '#1f8a2a';
-        const L = 8;
-        const [x0, y0, x1, y1] = [cx - 30, cy - 30, cx + 28, cy + 32];
-        for (const [ax, ay, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
-          rect(sx > 0 ? ax : ax - L + 2, ay, L, 2, edge);
-          rect(ax, sy > 0 ? ay : ay - L + 2, 2, L, edge);
-        }
-      }
-      if (it.golden && it.state !== 'burnt') disc(cx, cy - 8, 18, 'rgba(255,216,74,0.22)');
-
-      // 그림자 → 음식
-      ellipse(cx + 2, cy + 3, 14, 4, 'rgba(0,0,0,0.45)');
-      if (it.state === 'burnt') ctx.globalAlpha = Math.max(0.2, 1 - (it.burntFor || 0) / CONFIG.burntClear);
+      const img = (it.golden ? sprites.golden : sprites[FOODS[it.food].id])[it.state];
       const sizzle = it.state !== 'burnt' ? Math.round(Math.sin(fx.time * 20 + i) * 0.6) : 0;
-      sprite(set[it.state], cx - 16, cy - 24 + sizzle);
+
+      ellipse(cx + 3, cy + 5, 20, 12, 'rgba(0,0,0,0.5)');
+      if (it.golden && it.state !== 'burnt') disc(cx, cy, 22, 'rgba(255,216,74,0.2)');
+      if (it.state === 'cooked') {
+        // 익음: 음식 모양을 따라 초록 빛 테두리. 퍼펙트 구간은 금색, 곧 탈 때는 빠르게 깜빡
+        const perfect = it.cookedFor <= CONFIG.perfectWindow;
+        const late = it.cookedFor > CONFIG.burnAfter - 1.5;
+        const color = perfect ? (blink(12) ? '#ffe14a' : '#ffffff') : late && !blink(10) ? '#1f8a2a' : '#5dff6a';
+        glow(img, cx, cy + sizzle, color, 2);
+      }
+      if (it.state === 'burnt') ctx.globalAlpha = Math.max(0.2, 1 - (it.burntFor || 0) / CONFIG.burntClear);
+      art(img, cx, cy + sizzle);
       ctx.globalAlpha = 1;
       // 지글지글: 굽는 중이면 기름 방울이 튄다
       if (it.state === 'raw' && blink(6) && (i + Math.floor(fx.time * 6)) % 3 === 0) {
-        rect(cx - 12 + ((i * 7 + Math.floor(fx.time * 12)) % 24), cy - 26, 1, 1, '#fff6c0');
+        rect(cx - 14 + ((i * 7 + Math.floor(fx.time * 12)) % 28), cy - 14, 1, 1, '#fff6c0');
       }
       // 올린 사람
-      rect(cx - 25, cy - 27, 7, 7, C.ink);
-      rect(cx - 24, cy - 26, 5, 5, C.p[it.owner]);
-      rect(cx - 24, cy - 26, 2, 1, 'rgba(255,255,255,0.6)');
+      rect(cx - 25, cy - 22, 7, 7, C.ink);
+      rect(cx - 24, cy - 21, 5, 5, C.p[it.owner]);
       // 진행 바
       if (it.state !== 'burnt') {
         const raw = it.state === 'raw';
         const ratio = raw ? it.progress / it.cookTime : 1 - it.cookedFor / CONFIG.burnAfter;
-        rect(cx - 21, cy + 9, 42, 6, C.ink);
-        rect(cx - 20, cy + 10, 40, 4, '#2a1a12');
-        rect(cx - 20, cy + 10, Math.round(40 * ratio), 4, raw ? C.raw : C.cooked);
-        rect(cx - 20, cy + 10, Math.round(40 * ratio), 1, 'rgba(255,255,255,0.4)');
+        rect(cx - 21, cy + 23, 42, 6, C.ink);
+        rect(cx - 20, cy + 24, 40, 4, '#2a1a12');
+        rect(cx - 20, cy + 24, Math.round(40 * ratio), 4, raw ? C.raw : C.cooked);
+        rect(cx - 20, cy + 24, Math.round(40 * ratio), 1, 'rgba(255,255,255,0.4)');
       } else {
-        text('탐!', cx, cy + 4, { align: 'center', color: '#bbb' });
+        text('탐!', cx, cy + 20, { align: 'center', color: '#ccc' });
       }
     });
     // 칸마다 먹기 키 (Shift + 키). 지금 먹을 수 있는 칸만 밝게
@@ -669,7 +692,7 @@ export function createRenderer(canvas) {
       const [cx, cy] = slotCenter(i);
       const it = g.grill[i];
       const ready = !!it && it.state === 'cooked';
-      shiftChip(cx, cy + 18, KEYMAP.slots[i], ready, ready && it.cookedFor <= CONFIG.perfectWindow);
+      shiftChip(cx, cy + 31, KEYMAP.slots[i], ready, ready && it.cookedFor <= CONFIG.perfectWindow);
     }
   }
 
@@ -711,67 +734,105 @@ export function createRenderer(canvas) {
   }
 
   // ---------- 화면별 ----------
+  // 큰 키캡 (타이틀 안내용)
+  function bigKey(x, y, label, w = 22, color = '#e9dcc6', fg = C.ink) {
+    rect(x, y, w, 22, C.ink);
+    rect(x + 1, y + 1, w - 2, 20, color);
+    rect(x + 1, y + 16, w - 2, 5, 'rgba(0,0,0,0.25)');
+    rect(x + 1, y + 1, w - 2, 1, 'rgba(255,255,255,0.5)');
+    text(label, x + w / 2, y + 3, { align: 'center', color: fg, shadow: null });
+  }
+
   function drawTitle(ranking, level) {
     ctx.drawImage(wood, 0, 0);
-    dim(0.5);
-    const bob = (k) => Math.round(Math.sin(fx.time * 2 + k) * 3);
-    sprite(sprites.meat.cooked, 104, 30 + bob(0), 4);
-    sprite(sprites.golden.cooked, 472, 30 + bob(2), 4);
-    sprite(sprites.mushroom.cooked, 52, 50 + bob(1), 2);
-    sprite(sprites.chili, 556, 50 + bob(3), 2);
-    text('불판 대첩', 320, 40, { size: 48, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
-    text('고깃집 먹기 대결 vs CPU', 320, 92, { align: 'center', color: C.text });
+    dim(0.45);
+    const bob = (k) => Math.round(Math.sin(fx.time * 2 + k) * 2);
+    art(sprites.meat.cooked, 150, 44 + bob(0));
+    art(sprites.golden.cooked, 490, 44 + bob(2));
+    text('불판 대첩', 320, 18, { size: 48, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
+    text('고깃집에서 CPU와 먹기 대결!', 320, 72, { align: 'center', color: C.text });
 
-    box(150, 110, 340, 138, '#2a1b11', C.ink);
-    const rules = [
-      ['단백질·탄수화물·비타민 중 하나라도 0이 되면 패배!', C.text],
-      ['QWER: 밥·상추는 먹기, 고기·버섯은 불판에 올리기', C.text],
-      ['Shift+QWER / Shift+UIOP: 불판 윗줄 / 아랫줄 칸 먹기', C.cooked],
-      [`익자마자 먹으면 PERFECT! 영양 x${CONFIG.perfectMul}`, C.warn],
-      [`황금 고기: 모든 수치 +${CONFIG.golden.gain}, 먼저 먹는 사람이 임자`, C.gold],
-      [`청양고추: 먹으면 상대가 ${CONFIG.chili.stun}초 동안 못 먹는다`, C.danger],
-      ['빈 접시·빈 칸·덜 익은 칸을 누르면 헛손질 (잠깐 멈춤)', C.dim],
-      [`피버 타임: ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
+    // 3단계 안내 카드
+    const cards = [
+      ['1  접시 키', '고기·버섯은 불판으로'],
+      ['2  먹기', '초록으로 빛나면 Shift+키'],
+      ['3  버티기', '셋 중 하나라도 0이면 패배'],
     ];
-    rules.forEach(([r, col], i) => text(r, 320, 116 + i * 16, { align: 'center', color: col }));
-
-    // 조작
-    box(10, 110, 136, 138, C.pDark[0], C.ink);
-    text('접시', 78, 114, { align: 'center', color: C.p[0] });
-    KEYMAP.foods.forEach((code, i) => {
-      const y = 130 + i * 17;
-      keyChip(44, y, code, 0);
-      sprite(sprites.icon.plateFood[i], 60, y - 1, 1);
-      text(FOODS[i].name, 80, y + 1);
+    cards.forEach(([head, line], k) => {
+      const x = 28 + k * 200;
+      const y = 96;
+      box(x, y, 184, 108, 'rgba(30,18,10,0.9)', C.ink);
+      text(head, x + 92, y + 6, { align: 'center', color: C.warn });
+      if (k === 0) {
+        KEYMAP.foods.forEach((code, n) => {
+          bigKey(x + 16 + n * 40, y + 30, keyLabel(code));
+          art(sprites.icon.plateFood[n], x + 27 + n * 40, y + 66);
+        });
+      } else if (k === 1) {
+        glow(sprites.meat.cooked, x + 46, y + 52, '#5dff6a', 2);
+        art(sprites.meat.cooked, x + 46, y + 52);
+        bigKey(x + 92, y + 40, 'Shift', 44, '#28a838', '#fff');
+        text('+', x + 141, y + 43, { align: 'center' });
+        bigKey(x + 150, y + 40, 'Q');
+      } else {
+        const icons = [sprites.icon.meat, sprites.icon.rice, sprites.icon.lettuce];
+        const vals = [70, 45, 12];
+        const cols = [C.stat.protein, C.stat.carb, blink(6) ? C.danger : '#7a1a1a'];
+        icons.forEach((ic, n) => {
+          const yy = y + 24 + n * 20;
+          art(ic, x + 24, yy + 8);
+          drawGauge(x + 40, yy + 2, 126, vals[n], cols[n]);
+        });
+      }
+      text(line, x + 92, y + 88, { align: 'center', color: C.text });
     });
-    text('불판 먹기', 78, 200, { align: 'center', color: C.cooked });
-    shiftChip(36, 216, 'KeyQ', true);
-    text('~R 윗줄', 52, 217);
-    shiftChip(36, 232, 'KeyU', true);
-    text('~P 아랫줄', 52, 233);
 
     // 난이도
-    box(494, 110, 136, 138, '#2a1b11', C.ink);
-    text('상대 CPU', 562, 116, { align: 'center', color: C.p[1] });
-    LEVELS.forEach((lv, i) => {
-      const y = 140 + i * 28;
+    text('상대 CPU', 320, 216, { align: 'center', color: C.dim });
+    LEVELS.forEach((lv, n) => {
+      const x = 170 + n * 102;
       const on = lv === level;
-      box(506, y, 112, 24, on ? C.pDark[1] : '#3a2a20', on ? '#fff' : C.ink);
-      text(`${i + 1}  ${DIFFICULTY[lv].label}`, 562, y + 6, { align: 'center', color: on ? '#fff' : C.dim });
+      box(x, 232, 96, 24, on ? C.pDark[1] : '#3a2a20', on ? '#fff' : C.ink);
+      text(`${n + 1} ${DIFFICULTY[lv].label}`, x + 48, 238, { align: 'center', color: on ? '#fff' : C.dim });
     });
-    text('← → 또는 1·2·3', 562, 228, { align: 'center', color: C.dim });
+    text('←', 154, 238, { align: 'center', color: C.dim });
+    text('→', 486, 238, { align: 'center', color: C.dim });
 
-    box(170, 256, 300, 76, '#2a1b11', C.ink);
-    text(`최단 승리 TOP 5 · ${DIFFICULTY[level].label}`, 320, 260, { align: 'center', color: C.warn });
-    if (!ranking.length) text('아직 이긴 사람이 없어요', 320, 288, { align: 'center', color: C.dim });
-    ranking.forEach((r, i) => {
-      const y = 276 + i * 11;
-      text(`${i + 1}. ${r.name}`, 230, y, { color: i === 0 ? C.warn : C.text });
-      text(formatTime(r.time), 410, y, { align: 'right', color: i === 0 ? C.warn : C.text });
+    // 최단 승리 1~3위 (한 줄씩 짧게)
+    const top = ranking.slice(0, 3);
+    text(`최단 승리 · ${DIFFICULTY[level].label}`, 320, 264, { align: 'center', color: C.warn });
+    if (!top.length) text('아직 기록 없음 — 첫 주인공이 되어 보세요', 320, 280, { align: 'center', color: C.dim });
+    top.forEach((r, n) => text(`${n + 1}위 ${r.name}  ${formatTime(r.time)}`, 320, 280 + n * 12, { align: 'center', color: n === 0 ? C.warn : C.text }));
+
+    if (blink(2)) text('SPACE 로 시작', 320, 318, { size: 24, align: 'center', color: '#fff', shadow: '#5a1a08' });
+    text('H 자세한 규칙   ·   T 키 테스트', 320, 346, { align: 'center', color: C.dim });
+  }
+
+  // 자세한 규칙 (타이틀에서 H)
+  function drawHelp() {
+    ctx.drawImage(wood, 0, 0);
+    dim(0.6);
+    text('자세한 규칙', 320, 14, { size: 24, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
+    const rows = [
+      ['밥(Q)·상추(R)', '누르면 바로 먹는다. 탄수화물·비타민', C.text],
+      ['고기(W)·버섯(E)', '불판에 올린다. 익으면 Shift+칸 키로 먹기', C.text],
+      ['불판 칸 키', '윗줄 Shift+Q W E R, 아랫줄 Shift+U I O P', C.cooked],
+      ['PERFECT', `익자마자(${CONFIG.perfectWindow}초 안) 먹으면 영양 x${CONFIG.perfectMul}`, C.warn],
+      ['황금 고기', `가끔 고기 접시에 등장. 세 수치 모두 +${CONFIG.golden.gain}`, C.gold],
+      ['청양고추', `상추 접시에 등장. 먹으면 CPU가 ${CONFIG.chili.stun}초 못 먹음`, C.danger],
+      ['헛손질', '빈 접시·빈 칸·덜 익은 칸을 누르면 0.5초 멈춤', C.dim],
+      ['피버 타임', `가끔 ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
+      ['탐', '익고 4초 지나면 타서 저절로 치워진다', C.dim],
+      ['배고픔', '시간이 갈수록 수치가 빨리 준다', C.dim],
+    ];
+    box(40, 48, 560, 272, 'rgba(30,18,10,0.9)', C.ink);
+    rows.forEach(([head, body, col], n) => {
+      const y = 58 + n * 26;
+      text(head, 64, y, { color: col });
+      text(body, 184, y, { color: C.text });
+      if (n < rows.length - 1) rect(60, y + 19, 520, 1, 'rgba(255,255,255,0.08)');
     });
-
-    if (blink(2)) text('SPACE 를 눌러 시작', 320, 338, { align: 'center', color: '#fff' });
-    text('T: 키 테스트', 630, 344, { align: 'right', color: C.dim });
+    text('ESC 돌아가기', 320, 334, { align: 'center', color: C.dim });
   }
 
   function drawCountdown(g, n) {
@@ -804,8 +865,8 @@ export function createRenderer(canvas) {
       const x = pi === 0 ? 140 : 336;
       text(labels[pi], x + 82, 136, { align: 'center', color: C.p[pi] });
       FOODS.forEach((f, i) => {
-        sprite(sprites.icon.plateFood[i], x, 152 + i * 18, 1);
-        text(`${f.name} ${p.eaten[f.id]}`, x + 20, 154 + i * 18);
+        art(sprites.icon.plateFood[i], x + 10, 160 + i * 20);
+        text(`${f.name} ${p.eaten[f.id]}`, x + 24, 154 + i * 20);
       });
       const extra = [
         [`PERFECT ${p.perfect}`, C.warn],
@@ -813,7 +874,7 @@ export function createRenderer(canvas) {
         [`고추 공격 ${p.chili}`, C.danger],
         [`뺏어먹기 ${p.stolen}`, C.text],
       ];
-      extra.forEach(([t, col], i) => text(t, x + 86, 154 + i * 18, { color: col }));
+      extra.forEach(([t, col], i) => text(t, x + 86, 154 + i * 20, { color: col }));
     });
 
     if (ui.entering) {
@@ -855,5 +916,5 @@ export function createRenderer(canvas) {
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
 
-  return { ctx, sprites, fx, setLabels, consume, update, reset, drawTitle, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
+  return { ctx, sprites, fx, setLabels, consume, update, reset, drawTitle, drawHelp, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
 }

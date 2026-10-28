@@ -71,6 +71,13 @@ await check('타이틀에서 ←→·숫자키로 CPU 난이도를 고르고, �
   await page.keyboard.press('Digit1');
 });
 
+await check('타이틀에서 H로 자세한 규칙을 열고 ESC로 돌아온다', async () => {
+  await page.keyboard.press('KeyH');
+  assert((await state(page, 'B.screen')) === 'help');
+  await page.keyboard.press('Escape');
+  assert((await state(page, 'B.screen')) === 'title');
+});
+
 await check('Space → 3-2-1 카운트다운 후 타이머가 0부터 올라간다', async () => {
   assert((await state(page, 'B.screen')) === 'title');
   await page.keyboard.press('Space');

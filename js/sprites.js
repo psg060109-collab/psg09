@@ -1,4 +1,4 @@
-import { buildFoodPixels, toCanvas } from './foodart.js';
+import { buildFoodPixels, toCanvas, halve } from './foodart.js';
 
 // 16×16 도트 스프라이트. 문자 한 개 = 픽셀 한 개, '.'은 투명.
 
@@ -144,18 +144,19 @@ export function makeSprite(rows, pal, doc = globalThis.document) {
   return c;
 }
 
-// 큰 음식(접시·불판·앞접시)은 32×32 원본 해상도, 작은 아이콘(수치판·안내)은 16×16
+// 음식은 모두 탑뷰. 큰 그림(접시·불판·앞접시)은 44×44, 작은 아이콘(수치판·안내·결과)은 그걸 줄인 22×22
 export function buildSprites() {
+  const f = buildFoodPixels();
+  const small = (px) => toCanvas(halve(px));
   const icon = {
-    rice: makeSprite(SPRITE_ROWS.rice, PALETTES.rice),
-    lettuce: makeSprite(SPRITE_ROWS.lettuce, PALETTES.lettuce),
-    meat: makeSprite(SPRITE_ROWS.meat, PALETTES.meat.cooked),
-    rawMeat: makeSprite(SPRITE_ROWS.meat, PALETTES.meat.raw),
-    mushroom: makeSprite(SPRITE_ROWS.mushroom, PALETTES.mushroom.raw),
+    rice: small(f.rice),
+    lettuce: small(f.lettuce),
+    meat: small(f.meat.cooked),
+    rawMeat: small(f.meat.raw),
+    mushroom: small(f.mushroom.raw),
   };
   icon.plateFood = [icon.rice, icon.rawMeat, icon.mushroom, icon.lettuce];
 
-  const f = buildFoodPixels();
   const s = { icon, rice: toCanvas(f.rice), lettuce: toCanvas(f.lettuce), chili: toCanvas(f.chili) };
   for (const id of ['meat', 'mushroom', 'golden']) {
     s[id] = {};

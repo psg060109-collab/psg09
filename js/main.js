@@ -10,7 +10,7 @@ const STEP = 1 / CONFIG.tickRate;
 const RESULT_LOCK = 1.2; // 끝난 직후 연타로 바로 재시작되는 것 방지
 const LEVEL_KEY = 'bulpan-level';
 
-let screen = 'title'; // title | keytest | countdown | play | pause | result
+let screen = 'title'; // title | help | keytest | countdown | play | pause | result
 let game = null;
 let cpu = null;
 let countdown = 0;
@@ -79,6 +79,7 @@ function onKey(code, action) {
       const i = LEVELS.indexOf(level);
       if (code === 'Space') startMatch();
       else if (code === 'KeyT') screen = 'keytest';
+      else if (code === 'KeyH') screen = 'help';
       else if (code === 'ArrowLeft') setLevel(LEVELS[Math.max(0, i - 1)]);
       else if (code === 'ArrowRight') setLevel(LEVELS[Math.min(LEVELS.length - 1, i + 1)]);
       else if (/^Digit[1-3]$/.test(code)) setLevel(LEVELS[Number(code.slice(5)) - 1]);
@@ -86,6 +87,9 @@ function onKey(code, action) {
     }
     case 'keytest':
       if (code === 'Escape') screen = 'title';
+      break;
+    case 'help':
+      if (code === 'Escape' || code === 'KeyH' || code === 'Space') screen = 'title';
       break;
     case 'countdown':
       if (code === 'Escape') screen = 'title';
@@ -151,6 +155,8 @@ function draw() {
       return renderer.drawTitle(ranking[level], level);
     case 'keytest':
       return renderer.drawKeyTest(input.held);
+    case 'help':
+      return renderer.drawHelp();
     case 'countdown':
       return renderer.drawCountdown(game, Math.ceil(countdown - 0.6));
     case 'play':
