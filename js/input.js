@@ -1,13 +1,8 @@
-// 키 배치. event.code를 쓰므로 한/영 상태와 관계없이 동작한다.
+// 키 배치. 음식 하나에 키 하나 (밥 · 고기 · 버섯 · 상추).
+// event.code를 쓰므로 한/영 상태와 관계없이 동작한다.
 export const KEYMAP = [
-  {
-    plates: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'],
-    tongs: ['KeyA', 'KeyS'], // 고기, 버섯
-  },
-  {
-    plates: ['KeyU', 'KeyI', 'KeyO', 'KeyP'],
-    tongs: ['KeyJ', 'KeyK'],
-  },
+  { foods: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'] },
+  { foods: ['KeyU', 'KeyI', 'KeyO', 'KeyP'] },
 ];
 
 const LABEL = { Semicolon: ';', Comma: ',', Period: '.', Slash: '/' };
@@ -17,8 +12,7 @@ export function keyLabel(code) {
 
 const LOOKUP = new Map();
 KEYMAP.forEach((m, player) => {
-  m.plates.forEach((code, index) => LOOKUP.set(code, { player, kind: 'plate', index }));
-  m.tongs.forEach((code, index) => LOOKUP.set(code, { player, kind: 'tongs', index }));
+  m.foods.forEach((code, index) => LOOKUP.set(code, { player, index }));
 });
 
 export function lookup(code) {

@@ -1,6 +1,9 @@
 // 순수 게임 로직. DOM·Canvas를 쓰지 않아서 Node에서도 그대로 돌아간다.
 import { CONFIG, FOODS, STATS, PLACE_ORDER, decayRate } from './config.js';
 
+const MEAT = 1;
+const LETTUCE = 3;
+
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -16,13 +19,19 @@ function between(rng, lo, hi) {
   return lo + (hi - lo) * rng();
 }
 
-export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true } = {}) {
+export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true, specialsEnabled = true } = {}) {
   const rng = mulberry32(seed);
   const player = () => ({
     stats: Object.fromEntries(STATS.map((s) => [s, cfg.statStart])),
     cooldown: 0,
+    spicy: 0, // 남은 매운 시간 (이 동안 못 먹음)
+    lock: 0, // 헛손질 뒤 남은 시간 (이 동안 아무 키도 안 먹힘)
     eaten: Object.fromEntries(FOODS.map((f) => [f.id, 0])),
     stolen: 0,
+    perfect: 0,
+    golden: 0,
+    chili: 0,
+    lastFood: null, // 앞접시에 보여줄 마지막 음식 { food, golden }
   });
   return {
     cfg,
@@ -30,7 +39,8 @@ export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = tru
     seed,
     t: 0,
     players: [player(), player()],
-    plates: FOODS.map(() => ({ stock: cfg.plateStart, timer: 0 })),
+    // special: 접시 맨 위에 올라온 특별 음식 ('golden' | 'chili' | null)
+    plates: FOODS.map(() => ({ stock: cfg.plateStart, timer: 0, special: null })),
     grill: Array(cfg.grillSlots).fill(null),
     fever: {
       enabled: feverEnabled,
@@ -38,6 +48,8 @@ export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = tru
       active: false,
       count: 0,
     },
+    nextGolden: specialsEnabled ? between(rng, cfg.golden.firstMin, cfg.golden.firstMax) : Infinity,
+    nextChili: specialsEnabled ? between(rng, cfg.chili.firstMin, cfg.chili.firstMax) : Infinity,
     over: null, // { winner: 0 | 1 | -1, cause: [stat|null, stat|null], time }
     events: [],
   };
@@ -71,14 +83,40 @@ function updateFever(g) {
   }
 }
 
+// 특별 음식이 접시에 남아 있으면 새로 올리지 않고, 가져간 뒤부터 다음 간격을 잰다
+function updateSpecials(g) {
+  const cfg = g.cfg;
+  const meat = g.plates[MEAT];
+  if (g.t >= g.nextGolden) {
+    if (!meat.special) {
+      meat.special = 'golden';
+      emit(g, { type: 'special', kind: 'golden', plate: MEAT });
+    }
+    g.nextGolden = Infinity;
+  }
+  const lettuce = g.plates[LETTUCE];
+  if (g.t >= g.nextChili) {
+    if (!lettuce.special) {
+      lettuce.special = 'chili';
+      emit(g, { type: 'special', kind: 'chili', plate: LETTUCE });
+    }
+    g.nextChili = Infinity;
+  }
+}
+
 export function step(g, dt) {
   if (g.over) return;
   const cfg = g.cfg;
   g.t += dt;
   updateFever(g);
+  updateSpecials(g);
   const fever = g.fever.active;
 
-  for (const p of g.players) p.cooldown = Math.max(0, p.cooldown - dt);
+  for (const p of g.players) {
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    p.spicy = Math.max(0, p.spicy - dt);
+    p.lock = Math.max(0, p.lock - dt);
+  }
 
   // 접시 보충
   g.plates.forEach((pl, i) => {
@@ -97,11 +135,10 @@ export function step(g, dt) {
   // 불판
   g.grill.forEach((it, i) => {
     if (!it) return;
-    const food = FOODS[it.food];
     if (it.state === 'raw') {
       it.progress += dt * (fever ? cfg.fever.cookMul : 1);
-      if (it.progress >= food.cookTime) {
-        it.progress = food.cookTime;
+      if (it.progress >= it.cookTime) {
+        it.progress = it.cookTime;
         it.state = 'cooked';
         it.cookedFor = 0;
         emit(g, { type: 'cooked', slot: i });
@@ -111,7 +148,7 @@ export function step(g, dt) {
       if (it.cookedFor >= cfg.burnAfter) {
         it.state = 'burnt';
         it.burntFor = 0;
-        emit(g, { type: 'burnt', slot: i });
+        emit(g, { type: 'burnt', slot: i, golden: it.golden });
       }
     } else {
       // 탄 음식은 잠시 뒤 저절로 치워진다
@@ -139,68 +176,120 @@ export function step(g, dt) {
   }
 }
 
-function eat(g, pi, foodIndex) {
-  const p = g.players[pi];
-  const food = FOODS[foodIndex];
+function addGains(g, p, gain, mul = 1) {
   const gains = {};
   for (const s of STATS) {
-    const before = p.stats[s];
-    p.stats[s] = Math.min(g.cfg.statMax, before + food.gain[s]);
-    if (food.gain[s] > 0) gains[s] = food.gain[s];
+    const v = Math.round(gain[s] * mul);
+    if (v > 0) {
+      p.stats[s] = Math.min(g.cfg.statMax, p.stats[s] + v);
+      gains[s] = v;
+    }
   }
+  return gains;
+}
+
+function eat(g, pi, foodIndex, { golden = false, perfect = false } = {}) {
+  const p = g.players[pi];
+  const food = FOODS[foodIndex];
+  const base = golden ? Object.fromEntries(STATS.map((s) => [s, g.cfg.golden.gain])) : food.gain;
+  const gains = addGains(g, p, base, perfect ? g.cfg.perfectMul : 1);
   p.cooldown = g.cfg.eatCooldown;
   p.eaten[food.id]++;
-  emit(g, { type: 'eat', player: pi, food: foodIndex, gains });
+  if (golden) p.golden++;
+  if (perfect) p.perfect++;
+  p.lastFood = { food: foodIndex, golden };
+  emit(g, { type: 'eat', player: pi, food: foodIndex, gains, golden, perfect });
 }
 
-// 접시 키. 결과: 'eat' | 'place' | 'empty' | 'full' | 'cooldown' | null
-export function pressPlate(g, pi, plateIndex) {
+function canEat(g, pi) {
+  const p = g.players[pi];
+  if (p.spicy > 0) return 'spicy';
+  if (p.cooldown > 0) return 'cooldown';
+  return null;
+}
+
+function fail(g, pi, plate, reason) {
+  // 빈 접시·꽉 찬 불판을 누르면 헛손질: 잠시 손이 묶인다 (연타 방지)
+  if (reason === 'empty' || reason === 'full') g.players[pi].lock = g.cfg.fumbleLock;
+  emit(g, { type: 'fail', player: pi, plate, reason });
+  return reason;
+}
+
+// 불판에서 이 음식 중 익은 것, 곧 탈 것부터 (황금 고기가 익었으면 그것 먼저)
+function findCooked(g, foodIndex) {
+  let best = -1;
+  g.grill.forEach((it, i) => {
+    if (!it || it.food !== foodIndex || it.state !== 'cooked') return;
+    if (best < 0) return void (best = i);
+    const b = g.grill[best];
+    if (it.golden !== b.golden ? it.golden : it.cookedFor > b.cookedFor) best = i;
+  });
+  return best;
+}
+
+// 음식 키 하나로 모든 동작을 한다.
+//  밥·상추: 바로 먹기 (상추 접시에 고추가 있으면 고추부터)
+//  고기·버섯: 불판에 익은 게 있으면 먹기, 없으면 접시에서 불판에 올리기
+// 결과: 'eat' | 'chili' | 'place' | 'empty' | 'full' | 'cooldown' | 'spicy' | 'locked' | null
+export function pressFood(g, pi, i) {
   if (g.over) return null;
-  const plate = g.plates[plateIndex];
-  const food = FOODS[plateIndex];
-  if (plate.stock <= 0) {
-    emit(g, { type: 'fail', player: pi, plate: plateIndex, reason: 'empty' });
-    return 'empty';
-  }
+  if (g.players[pi].lock > 0) return 'locked';
+  const food = FOODS[i];
+  const plate = g.plates[i];
+
   if (!food.grill) {
-    if (g.players[pi].cooldown > 0) return 'cooldown';
+    if (plate.special === 'chili') {
+      const block = canEat(g, pi);
+      if (block) return fail(g, pi, i, block);
+      plate.special = null;
+      g.nextChili = g.t + between(g.rng, g.cfg.chili.gapMin, g.cfg.chili.gapMax);
+      const p = g.players[pi];
+      const gains = addGains(g, p, g.cfg.chili.gain);
+      p.cooldown = g.cfg.eatCooldown;
+      p.chili++;
+      g.players[1 - pi].spicy = g.cfg.chili.stun;
+      emit(g, { type: 'chili', player: pi, target: 1 - pi, gains });
+      return 'chili';
+    }
+    if (plate.stock <= 0) return fail(g, pi, i, 'empty');
+    const block = canEat(g, pi);
+    if (block) return fail(g, pi, i, block);
     plate.stock--;
-    eat(g, pi, plateIndex);
+    eat(g, pi, i);
     return 'eat';
   }
-  const slot = PLACE_ORDER[pi].find((i) => g.grill[i] === null);
-  if (slot === undefined) {
-    emit(g, { type: 'fail', player: pi, plate: plateIndex, reason: 'full' });
-    return 'full';
-  }
-  plate.stock--;
-  g.grill[slot] = { food: plateIndex, state: 'raw', progress: 0, cookedFor: 0, owner: pi };
-  emit(g, { type: 'place', player: pi, slot, food: plateIndex });
-  return 'place';
-}
 
-// 집게 키: 그 음식 중 익은 것, 곧 탈 것부터 먹는다.
-// 결과: 'eat' | 'raw'(아직 안 익음) | 'none'(불판에 없음) | 'cooldown' | null
-export function pressTongs(g, pi, foodIndex) {
-  if (g.over) return null;
-  let best = -1;
-  let anyRaw = false;
-  g.grill.forEach((it, i) => {
-    if (!it || it.food !== foodIndex) return;
-    if (it.state === 'raw') anyRaw = true;
-    else if (it.state === 'cooked' && (best < 0 || it.cookedFor > g.grill[best].cookedFor)) best = i;
-  });
-  if (best < 0) {
-    const reason = anyRaw ? 'raw' : 'none';
-    emit(g, { type: 'fail', player: pi, tongs: foodIndex, reason });
-    return reason;
+  const ready = findCooked(g, i);
+  if (ready >= 0) {
+    const block = canEat(g, pi);
+    if (block) return fail(g, pi, i, block);
+    const it = g.grill[ready];
+    g.grill[ready] = null;
+    const stolen = it.owner !== pi;
+    if (stolen) g.players[pi].stolen++;
+    const perfect = it.cookedFor <= g.cfg.perfectWindow;
+    eat(g, pi, i, { golden: it.golden, perfect });
+    emit(g, { type: 'grillEat', player: pi, slot: ready, stolen, perfect, golden: it.golden });
+    return 'eat';
   }
-  if (g.players[pi].cooldown > 0) return 'cooldown';
-  const it = g.grill[best];
-  g.grill[best] = null;
-  const stolen = it.owner !== pi;
-  if (stolen) g.players[pi].stolen++;
-  eat(g, pi, it.food);
-  emit(g, { type: 'grillEat', player: pi, slot: best, stolen });
-  return 'eat';
+
+  const golden = plate.special === 'golden';
+  if (!golden && plate.stock <= 0) return fail(g, pi, i, 'empty');
+  const slot = PLACE_ORDER[pi].find((k) => g.grill[k] === null);
+  if (slot === undefined) return fail(g, pi, i, 'full');
+  if (golden) {
+    plate.special = null;
+    g.nextGolden = g.t + between(g.rng, g.cfg.golden.gapMin, g.cfg.golden.gapMax);
+  } else plate.stock--;
+  g.grill[slot] = {
+    food: i,
+    golden,
+    state: 'raw',
+    progress: 0,
+    cookTime: golden ? g.cfg.golden.cookTime : food.cookTime,
+    cookedFor: 0,
+    owner: pi,
+  };
+  emit(g, { type: 'place', player: pi, slot, food: i, golden });
+  return 'place';
 }

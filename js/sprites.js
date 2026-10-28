@@ -55,6 +55,24 @@ export const SPRITE_ROWS = {
     '.....oooooo.....',
     '................',
   ],
+  chili: [
+    '................',
+    '..........ggg...',
+    '.........gg.....',
+    '........oGGo....',
+    '.......oRRRRo...',
+    '......oRRrRRo...',
+    '.....oRRrRRo....',
+    '....oRRrRRo.....',
+    '...oRRrRRo......',
+    '..oRRRRRo.......',
+    '..oRRRRo........',
+    '.oRRRRo.........',
+    '.oRRRo..........',
+    '.ooo............',
+    '................',
+    '................',
+  ],
   lettuce: [
     '................',
     '......oooo......',
@@ -78,6 +96,12 @@ export const SPRITE_ROWS = {
 export const PALETTES = {
   rice: { w: '#f7f3e8', k: '#d6cfbc', o: '#1f2a44', B: '#4a73b5', L: '#8fb2ea', D: '#2f5290' },
   lettuce: { o: '#1f3d1c', L: '#6cc04a', l: '#b6e88c', W: '#e8f0d0' },
+  chili: { o: '#3a0a0a', R: '#e8262e', r: '#ff8a7a', g: '#3e8a2a', G: '#5cb83a' },
+  golden: {
+    raw:    { o: '#6a4a10', R: '#f2c14e', F: '#fff3c0', mark: null },
+    cooked: { o: '#5a3408', R: '#e0a020', F: '#fff0a0', mark: '#9a6008' },
+    burnt:  { o: '#0e0b0b', R: '#2e2626', F: '#4a3e3a', mark: '#161111' },
+  },
   meat: {
     raw:    { o: '#4a1820', R: '#e0505e', F: '#f6c8c4', mark: null },
     cooked: { o: '#3a1f12', R: '#9a5530', F: '#e0a464', mark: '#4f2914' },
@@ -127,6 +151,9 @@ export function buildSprites() {
     s[id] = {};
     for (const st of ['raw', 'cooked', 'burnt']) s[id][st] = makeSprite(SPRITE_ROWS[id], PALETTES[id][st]);
   }
+  s.golden = {};
+  for (const st of ['raw', 'cooked', 'burnt']) s.golden[st] = makeSprite(SPRITE_ROWS.meat, PALETTES.golden[st]);
+  s.chili = makeSprite(SPRITE_ROWS.chili, PALETTES.chili);
   // 접시 위에 놓인 고기·버섯은 날것
   s.plateFood = [s.rice, s.meat.raw, s.mushroom.raw, s.lettuce];
   return s;

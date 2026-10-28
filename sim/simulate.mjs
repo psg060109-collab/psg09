@@ -9,8 +9,8 @@ const DT = 1 / CONFIG.tickRate;
 // 봇의 반응 시간(초). 사람이 한 번 누르고 다음에 누르기까지 걸리는 시간.
 const REACTION = [0.22, 0.38];
 
-export function runMatch(botA, botB, { seed = 1, feverEnabled = true, maxTime = 900, reaction = [REACTION, REACTION] } = {}) {
-  const g = createGame({ seed, feverEnabled });
+export function runMatch(botA, botB, { seed = 1, feverEnabled = true, specialsEnabled = true, maxTime = 900, reaction = [REACTION, REACTION] } = {}) {
+  const g = createGame({ seed, feverEnabled, specialsEnabled });
   const rng = mulberry32(seed * 7919 + 13);
   const bots = [BOTS[botA], BOTS[botB]];
   const delay = (pi) => reaction[pi][0] + rng() * (reaction[pi][1] - reaction[pi][0]);
@@ -55,6 +55,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log('greedy (피버 끔)  :', fmt(summarize('greedy', 'greedy', n, { feverEnabled: false })));
   const mash = summarize('random', 'greedy', n, { reaction: [[0.06, 0.09], REACTION] });
   console.log('연타(초당 ~14회) vs greedy :', fmt(mash), ` 연타 승 ${mash.wins[0]}판`);
+  const sp = summarize('greedy', 'plain', n);
+  console.log(`특수 음식 노림 vs 무시 : 노린 쪽 승 ${sp.wins[0]}판 / 무시한 쪽 승 ${sp.wins[1]}판`);
   const g = summarize('greedy', 'greedy', n);
   console.log(`420초 초과: ${g.times.filter((t) => t > 420).length}판, 450초 초과: ${g.times.filter((t) => t > 450).length}판`);
 }
