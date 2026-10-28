@@ -401,11 +401,11 @@ export function createRenderer(canvas) {
     });
     // 반찬 그릇 (김치 · 쌈장 · 마늘 · 파절이)
     const bowls = [
-      [196, 12, '#c83a26', '#f07a4a'],
-      [444, 12, '#4a9a32', '#86cc5a'],
+      [196, 16, '#c83a26', '#f07a4a'],
+      [444, 16, '#4a9a32', '#86cc5a'],
     ];
     for (const [x, r, a, b] of bowls) {
-      const y = 330;
+      const y = 328;
       ellipse(x + 2, y + 3, r + 1, r, 'rgba(0,0,0,0.35)', t);
       disc(x, y, r + 1, C.ink, t);
       disc(x, y, r, '#d8d2c8', t);
@@ -459,50 +459,65 @@ export function createRenderer(canvas) {
       drawGauge(x + 14, y + 20, SEAT_W - 28, v, col);
     });
 
-    // 앞접시 · 수저 · 물컵
+    // 앞접시 · 수저 · 물컵 (자리 아래쪽을 꽉 채우게 크게)
     const cx = x + SEAT_W / 2;
-    const cy = 236;
-    ellipse(cx + 3, cy + 4, 31, 30, 'rgba(0,0,0,0.35)');
-    disc(cx, cy, 31, C.ink);
-    disc(cx, cy, 30, '#c4c9d4');
-    disc(cx, cy, 27, '#e2e6ec');
-    disc(cx, cy, 24, '#f2f4f7');
-    rect(cx - 18, cy - 20, 6, 1, '#ffffff');
-    rect(cx - 20, cy - 18, 2, 4, '#ffffff');
+    const cy = 238;
+    ellipse(cx + 3, cy + 5, 41, 40, 'rgba(0,0,0,0.35)');
+    disc(cx, cy, 41, C.ink);
+    disc(cx, cy, 40, '#bfc5d0');
+    disc(cx, cy, 37, '#dde2ea');
+    disc(cx, cy, 33, '#eef1f5');
+    disc(cx, cy, 26, '#f6f8fa');
+    rect(cx - 26, cy - 27, 10, 2, '#ffffff');
+    rect(cx - 29, cy - 24, 3, 7, '#ffffff');
     if (p.lastFood) {
       const { food, golden } = p.lastFood;
       const img = golden ? sprites.golden.cooked : FOODS[food].grill ? sprites[FOODS[food].id].cooked : sprites.plateFood[food];
       art(img, cx, cy - (fx.bite[pi] > 0 ? 3 : 0));
     }
-    // 젓가락(나무) · 숟가락(스테인리스)
-    const hx = pi === 0 ? x + 12 : x + SEAT_W - 18;
-    for (const dx of [0, 4]) {
-      rect(hx + dx + 1, cy - 29, 2, 62, 'rgba(0,0,0,0.3)');
-      rect(hx + dx, cy - 30, 2, 62, '#c8a060');
-      rect(hx + dx, cy - 30, 1, 62, '#e0c080');
-      rect(hx + dx, cy - 30, 2, 10, '#8a6a3a');
+    // 젓가락(나무): 길고 굵게, 끝으로 갈수록 가늘게
+    const hx = pi === 0 ? x + 10 : x + SEAT_W - 22;
+    const top = cy - 58;
+    const len = 118;
+    for (const dx of [0, 7]) {
+      rect(hx + dx + 2, top + 2, 4, len, 'rgba(0,0,0,0.3)');
+      rect(hx + dx, top, 4, len - 14, '#c8a060');
+      rect(hx + dx + 1, top + len - 14, 2, 14, '#c8a060');
+      rect(hx + dx, top, 1, len - 14, '#e6c88a');
+      rect(hx + dx + 3, top, 1, len - 14, '#9a7a44');
+      rect(hx + dx, top, 4, 16, '#7a5a2e');
+      rect(hx + dx, top + 16, 4, 1, '#5a3e1a');
     }
-    const spx = pi === 0 ? x + SEAT_W - 18 : x + 14;
-    ellipse(spx + 3, cy - 21, 4, 6, '#9aa0aa');
-    ellipse(spx + 2, cy - 22, 3, 5, '#d8dce4');
-    rect(spx + 1, cy - 16, 3, 46, '#9aa0aa');
-    rect(spx + 1, cy - 16, 1, 46, '#e8ecf2');
-    // 물컵
-    ellipse(cx + 2, 312, 15, 14, 'rgba(0,0,0,0.3)');
-    disc(cx, 309, 15, C.ink);
-    disc(cx, 309, 14, '#b8d8ea');
-    disc(cx, 309, 11, '#8cc4e4');
-    disc(cx, 309, 8, '#a8d4ee');
-    rect(cx - 8, 302, 4, 2, '#ffffff');
-    rect(cx - 9, 304, 2, 2, '#ffffff');
+    // 숟가락(스테인리스): 큰 머리 + 굵은 손잡이
+    const spx = pi === 0 ? x + SEAT_W - 20 : x + 14;
+    const sy = cy - 56;
+    ellipse(spx + 5, sy + 13, 8, 12, 'rgba(0,0,0,0.3)');
+    ellipse(spx + 3, sy + 11, 8, 12, C.ink);
+    ellipse(spx + 3, sy + 11, 7, 11, '#a4aab4');
+    ellipse(spx + 2, sy + 10, 5, 8, '#d8dce4');
+    rect(spx - 1, sy + 4, 2, 4, '#ffffff');
+    rect(spx + 4, sy + 23, 3, 90, 'rgba(0,0,0,0.3)');
+    rect(spx + 1, sy + 22, 5, 90, C.ink);
+    rect(spx + 2, sy + 22, 3, 89, '#a4aab4');
+    rect(spx + 2, sy + 22, 1, 89, '#eef2f6');
+    rect(spx + 1, sy + 100, 5, 12, '#a4aab4');
+    // 물컵: 크게
+    const cupY = 323;
+    ellipse(cx + 3, cupY + 4, 20, 19, 'rgba(0,0,0,0.3)');
+    disc(cx, cupY, 20, C.ink);
+    disc(cx, cupY, 19, '#c4e0ee');
+    disc(cx, cupY, 16, '#8cc4e4');
+    disc(cx, cupY, 12, '#a8d4ee');
+    rect(cx - 11, cupY - 11, 6, 2, '#ffffff');
+    rect(cx - 13, cupY - 8, 2, 4, '#ffffff');
 
     if (p.spicy > 0) {
       ctx.fillStyle = `rgba(255,40,20,${0.25 + 0.15 * Math.sin(fx.time * 14)})`;
       ctx.fillRect(SEAT_X[pi], 36, SEAT_W, 316);
       art(sprites.chili, cx, cy - 4);
-      text(`매워! ${p.spicy.toFixed(1)}`, cx, cy + 34, { size: 24, align: 'center', color: '#fff', shadow: '#7a0a0a' });
+      text(`매워! ${p.spicy.toFixed(1)}`, cx, cy + 42, { size: 24, align: 'center', color: '#fff', shadow: '#7a0a0a' });
     }
-    if (p.lock > 0) text('헛손질!', cx, 186, { align: 'center', color: C.warn });
+    if (p.lock > 0) text('헛손질!', cx, 180, { align: 'center', color: C.warn });
   }
 
   function drawTop(g) {
