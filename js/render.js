@@ -191,6 +191,11 @@ export function createRenderer(canvas) {
           break;
         }
         case 'fail':
+          if (ev.loss) {
+            fx.shakeSeat[ev.player] = 0.3;
+            const x = SEAT_X[ev.player] + SEAT_W / 2;
+            STATS.forEach((_, row) => floater(x, gaugeY(row) + 18, `-${ev.loss}`, C.danger));
+          }
           if (ev.reason === 'spicy') fx.shakeSeat[ev.player] = 0.2;
           else if (ev.slot !== undefined) {
             const [x, y] = slotCenter(ev.slot);
@@ -915,7 +920,7 @@ export function createRenderer(canvas) {
   }
 
   // 자세한 규칙 (타이틀에서 H)
-  function drawHelp() {
+  function drawHelp(level = 'normal') {
     ctx.drawImage(wood, 0, 0);
     dim(0.6);
     text('자세한 규칙', 320, 14, { size: 24, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
@@ -926,7 +931,7 @@ export function createRenderer(canvas) {
       ['PERFECT', `익자마자(${CONFIG.perfectWindow}초 안) 먹으면 영양 x${CONFIG.perfectMul}`, C.warn],
       ['황금 고기', `가끔 고기 접시에 등장. 세 수치 모두 +${CONFIG.golden.gain}`, C.gold],
       ['청양고추', `상추 접시에 등장. 먹으면 CPU가 ${CONFIG.chili.stun}초 못 먹음`, C.danger],
-      ['헛손질', '빈 접시·빈 칸·덜 익은 칸을 누르면 0.5초 멈춤', C.dim],
+      ['헛손질', `잘못 누르면 ${CONFIG.fumbleLock}초 멈춤. 빈 접시·덜 익음은 수치 -${DIFFICULTY[level].penalty}`, C.danger],
       ['피버 타임', `가끔 ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
       ['탐', '익고 4초 지나면 타서 저절로 치워진다', C.dim],
       ['배고픔', '시간이 갈수록 수치가 빨리 준다', C.dim],

@@ -19,7 +19,8 @@ function between(rng, lo, hi) {
   return lo + (hi - lo) * rng();
 }
 
-export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true, specialsEnabled = true } = {}) {
+// fumblePenalty: 빈 접시·덜 익은 칸을 눌렀을 때 세 수치에서 깎는 양 (난이도마다 다름)
+export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true, specialsEnabled = true, fumblePenalty = 0 } = {}) {
   const rng = mulberry32(seed);
   const player = () => ({
     stats: Object.fromEntries(STATS.map((s) => [s, cfg.statStart])),
@@ -37,6 +38,7 @@ export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = tru
     cfg,
     rng,
     seed,
+    fumblePenalty,
     t: 0,
     players: [player(), player()],
     // special: 접시 맨 위에 올라온 특별 음식 ('golden' | 'chili' | null)
@@ -210,10 +212,15 @@ function canEat(g, pi) {
 
 // 헛손질: 빈 접시·꽉 찬 불판·빈 칸·덜 익은 칸·탄 칸을 누르면 잠시 손이 묶인다 (연타 방지)
 const FUMBLES = ['empty', 'full', 'none', 'raw', 'burnt'];
+// 그중 빈 접시·덜 익은 칸은 영양도 깎인다. 0이 되면 다음 틱에 진다
+const PENALIZED = ['empty', 'raw'];
 
 function fail(g, pi, where, reason) {
-  if (FUMBLES.includes(reason)) g.players[pi].lock = g.cfg.fumbleLock;
-  emit(g, { type: 'fail', player: pi, ...where, reason });
+  const p = g.players[pi];
+  if (FUMBLES.includes(reason)) p.lock = g.cfg.fumbleLock;
+  const loss = PENALIZED.includes(reason) ? g.fumblePenalty : 0;
+  if (loss > 0) for (const s of STATS) p.stats[s] = Math.max(0, p.stats[s] - loss);
+  emit(g, { type: 'fail', player: pi, ...where, reason, loss });
   return reason;
 }
 

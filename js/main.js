@@ -66,7 +66,7 @@ function fit() {
 
 function startMatch() {
   const seed = (Math.random() * 2 ** 31) | 0;
-  game = createGame({ seed });
+  game = createGame({ seed, fumblePenalty: DIFFICULTY[level].penalty });
   cpu = createCpu(level, 1, seed ^ 0x5bd1e995);
   renderer.reset();
   renderer.setLabels(['나', `CPU ${DIFFICULTY[level].label}`]);
@@ -256,7 +256,7 @@ function draw() {
     case 'keytest':
       return renderer.drawKeyTest(input.held);
     case 'help':
-      return renderer.drawHelp();
+      return renderer.drawHelp(level);
     case 'countdown':
       return renderer.drawCountdown(game, Math.ceil(countdown - 0.6));
     case 'play':

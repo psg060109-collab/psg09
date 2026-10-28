@@ -68,9 +68,10 @@ export const BOTS = {
 
 // 난이도: 반응 시간(초), 망설임(행동을 건너뛸 확률), 황금 고기·고추를 노리는지
 export const DIFFICULTY = {
-  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false },
-  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true },
-  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true },
+  // penalty: 빈 접시·덜 익은 칸 헛손질 때 세 수치에서 깎이는 양 (나·CPU 모두)
+  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false, penalty: 3 },
+  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true, penalty: 5 },
+  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true, penalty: 8 },
 };
 export const LEVELS = Object.keys(DIFFICULTY);
 

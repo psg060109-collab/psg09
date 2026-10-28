@@ -8,7 +8,7 @@ import { buildFoodPixels, SIZE, STAGES } from '../js/foodart.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking, loadRanking, saveRanking } from '../js/ranking.js';
 import { summarize, vsCpu } from '../sim/simulate.mjs';
-import { createCpu, LEVELS, BOTS } from '../js/ai.js';
+import { createCpu, LEVELS, BOTS, DIFFICULTY } from '../js/ai.js';
 import { mulberry32 as mulberry } from '../js/game.js';
 
 const DT = 1 / 60;
@@ -89,7 +89,7 @@ test('밥 키: 재고가 1 줄고 탄수화물이 22 오른다 (최대 100), 2P�
   assert.equal(g.players[0].stats.carb, 100);
 });
 
-test('접시가 비었는데 누르면 헛손질: 수치 변화 없이 0.5초 동안 아무 키도 안 먹힌다', () => {
+test('접시가 비었는데 누르면 헛손질: (벌점 없는 설정에서) 수치 변화 없이 0.5초 동안 아무 키도 안 먹힌다', () => {
   const g = newGame();
   g.plates[RICE].stock = 0;
   const before = g.players[0].stats.carb;
@@ -174,6 +174,45 @@ test('칸 키 헛손질: 빈 칸·덜 익은 칸·탄 칸을 누르면 0.5초 �
     assert.equal(pressFood(g, 0, RICE), 'locked');
     if (state) assert.ok(g.grill[2]);
   }
+});
+
+test('헛손질 벌점: 빈 접시·덜 익은 칸은 세 수치가 깎이고, 빈 칸·탄 칸·꽉 찬 불판은 안 깎인다', () => {
+  const cases = [
+    ['empty', (g) => { g.plates[RICE].stock = 0; return pressFood(g, 0, RICE); }, 8],
+    ['raw', (g) => { g.grill[2] = item(MEAT, 'raw'); return pressSlot(g, 0, 2); }, 8],
+    ['none', (g) => pressSlot(g, 0, 2), 0],
+    ['burnt', (g) => { g.grill[2] = item(MEAT, 'burnt'); return pressSlot(g, 0, 2); }, 0],
+    ['full', (g) => { g.grill.fill(null).forEach((_, k) => (g.grill[k] = item(MUSH, 'raw'))); return pressFood(g, 0, MEAT); }, 0],
+  ];
+  for (const [reason, act, loss] of cases) {
+    const g = newGame({ fumblePenalty: 8 });
+    const before = { ...g.players[0].stats };
+    assert.equal(act(g), reason);
+    for (const s of Object.keys(before)) assert.equal(g.players[0].stats[s], before[s] - loss, `${reason} ${s}`);
+    assert.deepEqual(g.players[1].stats, before, '상대는 그대로');
+    assert.equal(g.events.at(-1).loss, loss);
+  }
+});
+
+test('헛손질 벌점은 난이도가 높을수록 크고, 기본값(옵션 없음)은 0', () => {
+  const p = LEVELS.map((l) => DIFFICULTY[l].penalty);
+  assert.ok(p[0] > 0 && p[0] < p[1] && p[1] < p[2], p.join(','));
+  const g = newGame();
+  g.plates[RICE].stock = 0;
+  const before = g.players[0].stats.carb;
+  pressFood(g, 0, RICE);
+  assert.equal(g.players[0].stats.carb, before);
+});
+
+test('헛손질 벌점으로 수치가 0이 되면 다음 틱에 진다', () => {
+  const g = newGame({ fumblePenalty: 8 });
+  g.players[0].stats.vitamin = 5;
+  g.plates[RICE].stock = 0;
+  pressFood(g, 0, RICE);
+  assert.equal(g.players[0].stats.vitamin, 0);
+  step(g, DT);
+  assert.equal(g.over.winner, 1);
+  assert.equal(g.over.cause[0], 'vitamin');
 });
 
 test('상대가 올린 고기를 먼저 먹을 수 있다 (뺏어먹기 기록)', () => {

@@ -59,7 +59,7 @@ export function vsCpu(level, human = 'skilled', n = 100) {
   let wins = 0;
   const times = [];
   for (let seed = 1; seed <= n; seed++) {
-    const g = createGame({ seed });
+    const g = createGame({ seed, fumblePenalty: DIFFICULTY[level].penalty });
     const rng = mulberry32(seed * 104729 + 7);
     const cpu = createCpu(level, 1, seed * 31 + 3);
     const delay = () => h.reaction[0] + rng() * (h.reaction[1] - h.reaction[0]);
