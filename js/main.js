@@ -1,9 +1,10 @@
 import { CONFIG } from './config.js';
 import { createGame, step, pressFood, pressSlot } from './game.js';
-import { createCpu, DIFFICULTY, LEVELS } from './ai.js';
+import { createCpu, rulesFor, DIFFICULTY, LEVELS } from './ai.js';
 import { attachInput } from './input.js';
 import { createRenderer, hitTest, ENDING, W, H } from './render.js';
 import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js';
+import { createAudio, soundsFor } from './audio.js';
 
 const canvas = document.getElementById('game');
 const STEP = 1 / CONFIG.tickRate;
@@ -21,6 +22,8 @@ const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0, anim: 0,
 let renderer;
 let input;
 let touchMode = false;
+const audio = createAudio();
+let lastCount = 0; // 카운트다운 숫자가 바뀔 때 삑
 
 function setTouchMode(v) {
   if (touchMode === v) return;
@@ -66,11 +69,12 @@ function fit() {
 
 function startMatch() {
   const seed = (Math.random() * 2 ** 31) | 0;
-  game = createGame({ seed, fumblePenalty: DIFFICULTY[level].penalty });
+  game = createGame({ seed, cfg: rulesFor(level) });
   cpu = createCpu(level, 1, seed ^ 0x5bd1e995);
   renderer.reset();
   renderer.setLabels(['나', `CPU ${DIFFICULTY[level].label}`]);
   countdown = CONFIG.countdown + 0.6;
+  lastCount = 0;
   screen = 'countdown';
 }
 
@@ -82,6 +86,7 @@ function finishMatch() {
   ui.rank = 0;
   ui.name = '';
   ui.entering = game.over.winner === 0 && qualifies(ranking[level], game.over.time);
+  audio.play(game.over.winner === 0 ? 'win' : game.over.winner === 1 ? 'lose' : 'go');
 }
 
 // 터치 모드의 이름 입력: 휴대폰 키보드가 뜨는 진짜 입력창
@@ -123,8 +128,16 @@ function saveName() {
   ui.entering = false;
 }
 
+function toggleSound() {
+  renderer.setMuted(audio.toggle());
+  audio.unlock();
+}
+
 function onKey(code, action) {
   setTouchMode(false);
+  audio.unlock();
+  // M: 소리 켜기/끄기 (이름 입력 중에는 글자)
+  if (code === 'KeyM' && !(screen === 'result' && ui.entering)) return toggleSound();
   switch (screen) {
     case 'title': {
       const i = LEVELS.indexOf(level);
@@ -192,10 +205,14 @@ function skipEnding() {
 
 // 탭·클릭: 화면마다 누른 곳의 동작을 키 입력과 똑같이 처리한다
 function onTap(x, y) {
+  audio.unlock();
   if (skipEnding()) return;
   const hit = hitTest(screen, x, y, { game, level, ui });
   if (!hit) return;
   switch (hit.type) {
+    case 'sound':
+      toggleSound();
+      break;
     case 'level':
       setLevel(hit.level);
       break;
@@ -229,10 +246,19 @@ function onTap(x, y) {
 function update(dt) {
   if (screen === 'countdown') {
     countdown -= dt;
-    if (countdown <= 0) screen = 'play';
+    const n = Math.ceil(countdown - 0.6);
+    if (n !== lastCount && n > 0) audio.play('beep');
+    lastCount = n;
+    if (countdown <= 0) {
+      screen = 'play';
+      audio.play('go');
+    }
   } else if (screen === 'play') {
     step(game, dt);
     if (!ui.cpuPaused) cpu.update(game);
+    // 위기 심장 소리: 내 수치 중 가장 낮은 것이 dangerAt 아래로 내려갈수록 빨리
+    const min = Math.min(...Object.values(game.players[0].stats));
+    audio.heartbeat(dt, game.over ? 0 : Math.max(0, 1 - min / game.cfg.dangerAt));
     if (game.over) finishMatch();
   } else if (screen === 'result') {
     ui.anim += dt;
@@ -242,7 +268,9 @@ function update(dt) {
     }
   }
   syncNameForm();
+  if (screen !== 'play') audio.heartbeat(dt, 0);
   if (game) {
+    soundsFor(audio, game.events);
     renderer.consume(game.events);
     game.events.length = 0;
   }
@@ -277,6 +305,7 @@ async function boot() {
     // 폰트를 못 받아도 기본 글꼴로 진행
   }
   renderer = createRenderer(canvas);
+  renderer.setMuted(audio.muted);
   input = attachInput(window, onKey);
   setTouchMode(window.matchMedia?.('(pointer: coarse)').matches ?? false);
   canvas.addEventListener('pointerdown', (e) => {
@@ -308,6 +337,7 @@ async function boot() {
     get level() { return level; },
     get held() { return [...input.held]; },
     get touch() { return touchMode; },
+    get muted() { return audio.muted; },
     ui,
   };
 }

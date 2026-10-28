@@ -1,5 +1,5 @@
 // 컴퓨터 상대(CPU)와 밸런스 검수용 봇. 사람처럼 일정 간격(반응 시간)마다 키를 한 번씩 누른다.
-import { FOODS, STATS } from './config.js';
+import { CONFIG, FOODS, STATS } from './config.js';
 import { pressFood, pressSlot, findCooked, feverWarning, mulberry32 } from './game.js';
 
 const RICE = 0, MEAT = 1, MUSH = 2, LETTUCE = 3;
@@ -68,11 +68,16 @@ export const BOTS = {
 
 // 난이도: 반응 시간(초), 망설임(행동을 건너뛸 확률), 황금 고기·고추를 노리는지
 export const DIFFICULTY = {
-  // penalty: 빈 접시·덜 익은 칸 헛손질 때 세 수치에서 깎이는 양 (나·CPU 모두)
-  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false, penalty: 3 },
-  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true, penalty: 5 },
-  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true, penalty: 8 },
+  // rules: 그 난이도에서 바뀌는 게임 규칙 (나·CPU 모두 똑같이 적용)
+  //  fumblePenalty 헛손질 벌점 · decayMul 수치 감소 배수 · burnAfter 익은 뒤 탈 때까지(초)
+  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false, rules: { fumblePenalty: 3, decayMul: 1.0, burnAfter: 4.0 } },
+  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true, rules: { fumblePenalty: 5, decayMul: 1.2, burnAfter: 3.5 } },
+  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true, rules: { fumblePenalty: 8, decayMul: 1.5, burnAfter: 2.5 } },
 };
+
+export function rulesFor(level) {
+  return { ...CONFIG, ...DIFFICULTY[level].rules };
+}
 export const LEVELS = Object.keys(DIFFICULTY);
 
 // 매 틱 update(g)를 부르면 반응 시간마다 한 번씩 키를 누른다

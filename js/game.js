@@ -19,8 +19,8 @@ function between(rng, lo, hi) {
   return lo + (hi - lo) * rng();
 }
 
-// fumblePenalty: 빈 접시·덜 익은 칸을 눌렀을 때 세 수치에서 깎는 양 (난이도마다 다름)
-export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true, specialsEnabled = true, fumblePenalty = 0 } = {}) {
+// cfg: 난이도별 규칙은 ai.js의 rulesFor(level)로 만든다
+export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = true, specialsEnabled = true } = {}) {
   const rng = mulberry32(seed);
   const player = () => ({
     stats: Object.fromEntries(STATS.map((s) => [s, cfg.statStart])),
@@ -30,6 +30,8 @@ export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = tru
     eaten: Object.fromEntries(FOODS.map((f) => [f.id, 0])),
     stolen: 0,
     perfect: 0,
+    combo: 0, // 지금 이어지는 PERFECT 수
+    bestCombo: 0,
     golden: 0,
     chili: 0,
     lastFood: null, // 앞접시에 보여줄 마지막 음식 { food, golden }
@@ -38,7 +40,6 @@ export function createGame({ seed = Date.now(), cfg = CONFIG, feverEnabled = tru
     cfg,
     rng,
     seed,
-    fumblePenalty,
     t: 0,
     players: [player(), player()],
     // special: 접시 맨 위에 올라온 특별 음식 ('golden' | 'chili' | null)
@@ -194,13 +195,19 @@ function eat(g, pi, foodIndex, { golden = false, perfect = false } = {}) {
   const p = g.players[pi];
   const food = FOODS[foodIndex];
   const base = golden ? Object.fromEntries(STATS.map((s) => [s, g.cfg.golden.gain])) : food.gain;
-  const gains = addGains(g, p, base, perfect ? g.cfg.perfectMul : 1);
+  const mul = perfect ? comboMul(g.cfg, p.combo) : 1;
+  const gains = addGains(g, p, base, mul);
   p.cooldown = g.cfg.eatCooldown;
   p.eaten[food.id]++;
   if (golden) p.golden++;
   if (perfect) p.perfect++;
   p.lastFood = { food: foodIndex, golden };
-  emit(g, { type: 'eat', player: pi, food: foodIndex, gains, golden, perfect });
+  emit(g, { type: 'eat', player: pi, food: foodIndex, gains, golden, perfect, combo: perfect ? p.combo : 0, mul });
+}
+
+// n번째 연속 PERFECT의 배수 (1번째 = perfectMul)
+export function comboMul(cfg, n) {
+  return Math.min(cfg.comboMax, cfg.perfectMul + cfg.comboStep * Math.max(0, n - 1));
 }
 
 function canEat(g, pi) {
@@ -217,8 +224,11 @@ const PENALIZED = ['empty', 'raw'];
 
 function fail(g, pi, where, reason) {
   const p = g.players[pi];
-  if (FUMBLES.includes(reason)) p.lock = g.cfg.fumbleLock;
-  const loss = PENALIZED.includes(reason) ? g.fumblePenalty : 0;
+  if (FUMBLES.includes(reason)) {
+    p.lock = g.cfg.fumbleLock;
+    p.combo = 0;
+  }
+  const loss = PENALIZED.includes(reason) ? g.cfg.fumblePenalty : 0;
   if (loss > 0) for (const s of STATS) p.stats[s] = Math.max(0, p.stats[s] - loss);
   emit(g, { type: 'fail', player: pi, ...where, reason, loss });
   return reason;
@@ -303,7 +313,10 @@ export function pressSlot(g, pi, slot) {
   const stolen = it.owner !== pi;
   if (stolen) g.players[pi].stolen++;
   const perfect = it.cookedFor <= g.cfg.perfectWindow;
+  const p = g.players[pi];
+  p.combo = perfect ? p.combo + 1 : 0;
+  p.bestCombo = Math.max(p.bestCombo, p.combo);
   eat(g, pi, it.food, { golden: it.golden, perfect });
-  emit(g, { type: 'grillEat', player: pi, slot, stolen, perfect, golden: it.golden });
+  emit(g, { type: 'grillEat', player: pi, slot, stolen, perfect, golden: it.golden, combo: p.combo });
   return 'eat';
 }

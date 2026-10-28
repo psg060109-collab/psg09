@@ -19,6 +19,8 @@ export const CONFIG = {
   statMax: 100,
   eatCooldown: 0.35,
   fumbleLock: 0.5, // 헛손질(빈 접시·꽉 찬 불판) 뒤 아무것도 못 하는 시간
+  fumblePenalty: 0, // 빈 접시·덜 익은 칸 헛손질 때 세 수치에서 깎는 양 (난이도별 값은 ai.js DIFFICULTY)
+  dangerAt: 20, // 수치가 이 아래면 위기 연출 (깜빡임·붉은 테두리·심장 소리)
 
   plateMax: 3,
   plateStart: 3,
@@ -32,6 +34,7 @@ export const CONFIG = {
   decaySlope: 0.012,
   rampStart: 390,
   rampSlope: 0.08,
+  decayMul: 1, // 감소량 전체 배수 (난이도별 값은 ai.js DIFFICULTY)
 
   fever: {
     firstMin: 60,
@@ -47,6 +50,10 @@ export const CONFIG = {
   // 퍼펙트: 익은 직후 이 시간 안에 먹으면 영양 배수
   perfectWindow: 0.6,
   perfectMul: 1.5,
+  // 콤보: PERFECT를 이어 가면 한 번마다 배수 +comboStep (최대 comboMax).
+  // 불판 음식을 PERFECT 아니게 먹거나 헛손질하면 끊긴다. 밥·상추는 영향 없음
+  comboStep: 0.25,
+  comboMax: 2.5,
 
   // 황금 고기: 가끔 고기 접시에 올라온다. 굽기 오래 걸리지만 세 수치 모두 오른다
   golden: {
@@ -80,5 +87,6 @@ export const PLACE_ORDER = [
 export function decayRate(t, cfg = CONFIG) {
   let r = cfg.decayBase + cfg.decaySlope * t;
   if (t > cfg.rampStart) r += cfg.rampSlope * (t - cfg.rampStart);
+  r *= cfg.decayMul ?? 1;
   return r;
 }

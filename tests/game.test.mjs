@@ -2,13 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, FOODS, decayRate } from '../js/config.js';
-import { createGame, step, pressFood, pressSlot, feverWarning } from '../js/game.js';
+import { createGame, step, pressFood, pressSlot, feverWarning, comboMul } from '../js/game.js';
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
 import { buildFoodPixels, SIZE, STAGES } from '../js/foodart.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking, loadRanking, saveRanking } from '../js/ranking.js';
 import { summarize, vsCpu } from '../sim/simulate.mjs';
-import { createCpu, LEVELS, BOTS, DIFFICULTY } from '../js/ai.js';
+import { createCpu, LEVELS, BOTS, rulesFor } from '../js/ai.js';
 import { mulberry32 as mulberry } from '../js/game.js';
 
 const DT = 1 / 60;
@@ -185,7 +185,7 @@ test('헛손질 벌점: 빈 접시·덜 익은 칸은 세 수치가 깎이고, �
     ['full', (g) => { g.grill.fill(null).forEach((_, k) => (g.grill[k] = item(MUSH, 'raw'))); return pressFood(g, 0, MEAT); }, 0],
   ];
   for (const [reason, act, loss] of cases) {
-    const g = newGame({ fumblePenalty: 8 });
+    const g = newGame({ cfg: { ...CONFIG, fumblePenalty: 8 } });
     const before = { ...g.players[0].stats };
     assert.equal(act(g), reason);
     for (const s of Object.keys(before)) assert.equal(g.players[0].stats[s], before[s] - loss, `${reason} ${s}`);
@@ -194,9 +194,13 @@ test('헛손질 벌점: 빈 접시·덜 익은 칸은 세 수치가 깎이고, �
   }
 });
 
-test('헛손질 벌점은 난이도가 높을수록 크고, 기본값(옵션 없음)은 0', () => {
-  const p = LEVELS.map((l) => DIFFICULTY[l].penalty);
-  assert.ok(p[0] > 0 && p[0] < p[1] && p[1] < p[2], p.join(','));
+test('난이도가 높을수록 헛손질 벌점↑ · 수치 감소↑ · 타기까지 시간↓, 기본 설정은 벌점 0', () => {
+  const r = LEVELS.map((l) => rulesFor(l));
+  const inc = (k) => r.every((x, i) => i === 0 || x[k] > r[i - 1][k]);
+  assert.ok(r[0].fumblePenalty > 0 && inc('fumblePenalty'), 'fumblePenalty');
+  assert.ok(r[0].decayMul >= 1 && inc('decayMul'), 'decayMul');
+  assert.ok(r.every((x, i) => i === 0 || x.burnAfter < r[i - 1].burnAfter), 'burnAfter');
+  assert.equal(CONFIG.fumblePenalty, 0);
   const g = newGame();
   g.plates[RICE].stock = 0;
   const before = g.players[0].stats.carb;
@@ -205,7 +209,7 @@ test('헛손질 벌점은 난이도가 높을수록 크고, 기본값(옵션 없
 });
 
 test('헛손질 벌점으로 수치가 0이 되면 다음 틱에 진다', () => {
-  const g = newGame({ fumblePenalty: 8 });
+  const g = newGame({ cfg: { ...CONFIG, fumblePenalty: 8 } });
   g.players[0].stats.vitamin = 5;
   g.plates[RICE].stock = 0;
   pressFood(g, 0, RICE);
@@ -213,6 +217,54 @@ test('헛손질 벌점으로 수치가 0이 되면 다음 틱에 진다', () => 
   step(g, DT);
   assert.equal(g.over.winner, 1);
   assert.equal(g.over.cause[0], 'vitamin');
+});
+
+test('어려움: 수치가 1.5배 빨리 줄고, 익은 음식은 2.5초 만에 탄다', () => {
+  const g = newGame({ cfg: rulesFor('hard') });
+  run(g, 10);
+  const easy = newGame({ cfg: rulesFor('easy') });
+  run(easy, 10);
+  const lost = (x) => CONFIG.statStart - x.players[0].stats.carb;
+  assert.ok(Math.abs(lost(g) / lost(easy) - 1.5) < 0.01, `${lost(g)} / ${lost(easy)}`);
+  const h = newGame({ cfg: rulesFor('hard') });
+  h.grill[0] = item(MEAT, 'cooked');
+  run(h, 2.4);
+  assert.equal(h.grill[0].state, 'cooked');
+  run(h, 0.2);
+  assert.equal(h.grill[0].state, 'burnt');
+});
+
+test('콤보: PERFECT를 이어 가면 배수가 1.5 → 1.75 → 2.0 … 최대 2.5, 늦게 먹거나 헛손질하면 끊긴다', () => {
+  const g = newGame();
+  const p = g.players[0];
+  const perfectMeat = () => {
+    p.stats.protein = 0.5; // 최대치에 막히지 않게
+    p.cooldown = 0;
+    g.grill[0] = item(MEAT, 'cooked');
+    g.events.length = 0;
+    assert.equal(pressSlot(g, 0, 0), 'eat');
+    return g.events.find((e) => e.type === 'eat');
+  };
+  const muls = [1, 2, 3, 4, 5, 6].map(() => perfectMeat().mul);
+  assert.deepEqual(muls, [1.5, 1.75, 2, 2.25, 2.5, 2.5]);
+  assert.equal(p.combo, 6);
+  assert.equal(p.bestCombo, 6);
+  // 늦게(PERFECT 아님) 먹으면 끊김
+  p.cooldown = 0;
+  g.grill[0] = item(MEAT, 'cooked', { cookedFor: 1 });
+  pressSlot(g, 0, 0);
+  assert.equal(p.combo, 0);
+  assert.equal(perfectMeat().mul, 1.5);
+  // 밥은 콤보에 영향 없음
+  p.cooldown = 0;
+  pressFood(g, 0, RICE);
+  assert.equal(p.combo, 1);
+  // 헛손질하면 끊김
+  pressSlot(g, 0, 5);
+  assert.equal(p.combo, 0);
+  assert.equal(p.bestCombo, 6);
+  // 단백질 30 × 2.0 = 60 (3번째 콤보)
+  assert.equal(Math.round(30 * comboMul(CONFIG, 3)), 60);
 });
 
 test('상대가 올린 고기를 먼저 먹을 수 있다 (뺏어먹기 기록)', () => {

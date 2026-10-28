@@ -1,7 +1,7 @@
 // Canvas 2D 도트 렌더링. 논리 해상도 640×360, CSS로 정수배 확대한다.
 // 고깃집 식탁을 위에서 내려다본 모습: 1P는 왼쪽, 2P는 오른쪽에 마주 앉는다.
 import { CONFIG, FOODS, STATS, STAT_LABEL, decayRate } from './config.js';
-import { feverWarning, feverRemaining } from './game.js';
+import { feverWarning, feverRemaining, comboMul } from './game.js';
 import { KEYMAP, GAME_CODES, keyLabel } from './input.js';
 
 const GAME_KEYS = new Set(GAME_CODES);
@@ -55,6 +55,7 @@ const UI = {
   quit: { x: 328, y: 196, w: 136, h: 34 },
   retry: { x: 176, y: 266, w: 136, h: 30 },
   toTitle: { x: 328, y: 266, w: 136, h: 30 },
+  sound: { x: 598, y: 6, w: 36, h: 24 },
 };
 const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 
@@ -62,6 +63,7 @@ const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r
 export function hitTest(screen, x, y, { game, level, ui } = {}) {
   switch (screen) {
     case 'title':
+      if (inside(UI.sound, x, y)) return { type: 'sound' };
       for (let n = 0; n < LEVELS.length; n++) if (inside(UI.level(n), x, y)) return { type: 'level', level: LEVELS[n] };
       if (inside(UI.start, x, y)) return { type: 'start' };
       if (inside(UI.help, x, y)) return { type: 'help' };
@@ -80,6 +82,7 @@ export function hitTest(screen, x, y, { game, level, ui } = {}) {
       return null;
     }
     case 'pause':
+      if (inside(UI.sound, x, y)) return { type: 'sound' };
       if (inside(UI.quit, x, y)) return { type: 'title' };
       return { type: 'resume' };
     case 'result':
@@ -106,6 +109,7 @@ export function createRenderer(canvas) {
   }
   // 터치 모드면 키 안내 대신 '탭' 안내를 보여 준다
   let touch = false;
+  let muted = false;
   function setTouch(v) {
     touch = v;
   }
@@ -174,7 +178,10 @@ export function createRenderer(canvas) {
             burst(x, y, C.gold, 16, 90);
             floater(x, y - 34, '황금 고기!', C.gold, 12, 1.3);
           }
-          if (ev.perfect) floater(x, y - 20, 'PERFECT!', C.warn, 12, 1.0);
+          if (ev.perfect && ev.combo >= 2) {
+            floater(x, y - 20, `${ev.combo}콤보 PERFECT!`, C.warn, 12, 1.1);
+            burst(x, y, '#ffffff', 6 + 2 * Math.min(ev.combo, 6), 70);
+          } else if (ev.perfect) floater(x, y - 20, 'PERFECT!', C.warn, 12, 1.0);
           else if (ev.stolen) floater(x, y - 20, '뺏었다!', C.p[ev.player]);
           break;
         }
@@ -506,7 +513,7 @@ export function createRenderer(canvas) {
   function drawSeat(g, pi) {
     const x = SEAT_X[pi] + shake(fx.shakeSeat[pi]);
     const p = g.players[pi];
-    const danger = STATS.some((s) => p.stats[s] <= 15);
+    const danger = STATS.some((s) => p.stats[s] <= g.cfg.dangerAt);
 
     box(x + 4, 8, SEAT_W - 8, 22, danger && blink(6) ? '#b81f1f' : C.pDark[pi], C.ink);
     rect(x + 6, 10, SEAT_W - 12, 1, 'rgba(255,255,255,0.18)');
@@ -520,9 +527,10 @@ export function createRenderer(canvas) {
       const v = p.stats[s];
       art(icons[s], x + 22, y + 8);
       text(STAT_LABEL[s], x + 36, y + 3, { color: C.dim });
-      text(String(Math.ceil(v)), x + SEAT_W - 16, y + 3, { align: 'right', color: v <= 30 ? (v <= 15 ? C.danger : C.warn) : C.text });
+      const low = v <= g.cfg.dangerAt;
+      text(String(Math.ceil(v)), x + SEAT_W - 16, y + 3, { align: 'right', color: v <= 30 ? (low ? C.danger : C.warn) : C.text });
       let col = C.stat[s];
-      if (v <= 15) col = blink(6) ? C.danger : '#7a1a1a';
+      if (low) col = blink(v <= 10 ? 10 : 6) ? C.danger : '#7a1a1a';
       else if (v <= 30) col = C.warn;
       drawGauge(x + 14, y + 20, SEAT_W - 28, v, col);
     });
@@ -586,6 +594,7 @@ export function createRenderer(canvas) {
       text(`매워! ${p.spicy.toFixed(1)}`, cx, cy + 42, { size: 24, align: 'center', color: '#fff', shadow: '#7a0a0a' });
     }
     if (p.lock > 0) text('헛손질!', cx, 180, { align: 'center', color: C.warn });
+    else if (p.combo >= 2) text(`${p.combo}콤보! 다음 x${comboMul(g.cfg, p.combo + 1)}`, cx, 180, { align: 'center', color: blink(4) ? '#ffffff' : C.warn, shadow: '#5a1a08' });
   }
 
   function drawTop(g) {
@@ -598,7 +607,7 @@ export function createRenderer(canvas) {
     }
     const late = g.t > CONFIG.rampStart;
     box(262, 338, 116, 18, 'rgba(20,10,6,0.7)', 'rgba(0,0,0,0.7)');
-    text(`배고픔 ${decayRate(g.t).toFixed(1)}/초`, 320, 341, { align: 'center', color: late ? C.danger : C.dim });
+    text(`배고픔 ${decayRate(g.t, g.cfg).toFixed(1)}/초`, 320, 341, { align: 'center', color: late ? C.danger : C.dim });
   }
 
   function drawFeverBanner(g) {
@@ -705,17 +714,18 @@ export function createRenderer(canvas) {
   })();
 
   // 굽는 정도에 맞는 그림: 날것 → 익는 중(2단계) → 익음 → 타기 시작 → 탐
-  function stageOf(it) {
+  function stageOf(it, burnAfter) {
     if (it.state === 'raw') {
       const r = it.progress / it.cookTime;
       return r < 0.4 ? 'raw' : r < 0.75 ? 'cook1' : 'cook2';
     }
-    if (it.state === 'cooked') return it.cookedFor / CONFIG.burnAfter < 0.55 ? 'cooked' : 'char1';
+    if (it.state === 'cooked') return it.cookedFor / burnAfter < 0.55 ? 'cooked' : 'char1';
     return 'burnt';
   }
 
   function drawGrill(g) {
     const fever = g.fever.active;
+    const { burnAfter } = g.cfg; // 난이도마다 다르다
     const G = GRILL;
     // 손잡이 (나무 + 리벳)
     for (const hx of [G.x - 14, G.x + G.w]) {
@@ -753,7 +763,7 @@ export function createRenderer(canvas) {
       const [cx, cy] = slotCenter(i);
       if (fx.flashSlot[i] > 0) rect(cx - 26, cy - 26, 52, 52, 'rgba(255,255,255,0.4)');
       if (!it) return;
-      const img = (it.golden ? sprites.golden : sprites[FOODS[it.food].id])[stageOf(it)];
+      const img = (it.golden ? sprites.golden : sprites[FOODS[it.food].id])[stageOf(it, burnAfter)];
       const sizzle = it.state !== 'burnt' ? Math.round(Math.sin(fx.time * 20 + i) * 0.6) : 0;
 
       ellipse(cx + 3, cy + 5, 20, 12, 'rgba(0,0,0,0.5)');
@@ -761,7 +771,7 @@ export function createRenderer(canvas) {
       if (it.state === 'cooked') {
         // 익음: 음식 모양을 따라 노란 빛 테두리. 퍼펙트 구간은 흰색·주황, 곧 탈 때는 빠르게 깜빡
         const perfect = it.cookedFor <= CONFIG.perfectWindow;
-        const late = it.cookedFor > CONFIG.burnAfter - 1.5;
+        const late = it.cookedFor > burnAfter - Math.min(1.5, burnAfter * 0.4);
         const color = perfect ? (blink(12) ? '#ff8a1a' : '#ffffff') : late && !blink(10) ? '#8a6a10' : C.cooked;
         glow(img, cx, cy + sizzle, color, 2);
       }
@@ -778,7 +788,7 @@ export function createRenderer(canvas) {
       // 진행 바
       if (it.state !== 'burnt') {
         const raw = it.state === 'raw';
-        const ratio = raw ? it.progress / it.cookTime : 1 - it.cookedFor / CONFIG.burnAfter;
+        const ratio = raw ? it.progress / it.cookTime : 1 - it.cookedFor / burnAfter;
         rect(cx - 21, cy + 23, 42, 6, C.ink);
         rect(cx - 20, cy + 24, 40, 4, '#2a1a12');
         rect(cx - 20, cy + 24, Math.round(40 * ratio), 4, raw ? C.raw : C.cooked);
@@ -821,10 +831,30 @@ export function createRenderer(canvas) {
     drawGrill(g);
     drawTop(g);
     drawFeverBanner(g);
+    drawDanger(g);
     drawEffects();
     if (fx.feverFlash > 0) {
       ctx.fillStyle = `rgba(255,220,120,${fx.feverFlash})`;
       ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // 위기 연출: 내 수치가 dangerAt 아래면 화면 가장자리가 붉게 뛴다 (낮을수록 진하고 빠르게)
+  function drawDanger(g) {
+    const min = Math.min(...STATS.map((s) => g.players[0].stats[s]));
+    const lim = g.cfg.dangerAt;
+    if (min > lim) return;
+    const d = 1 - min / lim;
+    const pulse = 0.5 + 0.5 * Math.sin(fx.time * (6 + 8 * d));
+    const a = (0.3 + 0.4 * d) * (0.55 + 0.45 * pulse);
+    // 계단식 테두리 4겹 (안쪽으로 갈수록 옅게)
+    for (let k = 0; k < 4; k++) {
+      ctx.fillStyle = `rgba(220,20,20,${(a * (4 - k)) / 4})`;
+      const o = k * 6;
+      ctx.fillRect(o, o, W - 2 * o, 6);
+      ctx.fillRect(o, H - o - 6, W - 2 * o, 6);
+      ctx.fillRect(o, o + 6, 6, H - 2 * o - 12);
+      ctx.fillRect(W - o - 6, o + 6, 6, H - 2 * o - 12);
     }
   }
 
@@ -916,25 +946,52 @@ export function createRenderer(canvas) {
     // 안내는 사라지지 않고 색만 바뀐다 (잠깐 봐도 다음에 누를 키가 보이게)
     if (touch) box(UI.start.x, UI.start.y, UI.start.w, UI.start.h, '#a0420e', '#ffcf3a');
     text(touch ? '탭해서 시작' : 'SPACE 로 시작', 320, 309, { size: 24, align: 'center', color: blink(2) ? '#fff' : C.warn, shadow: '#5a1a08' });
-    text(touch ? '자세한 규칙 보기' : 'H 자세한 규칙   ·   T 키 테스트', 320, 344, { align: 'center', color: C.dim });
+    text(touch ? '자세한 규칙 보기' : 'H 자세한 규칙   ·   T 키 테스트   ·   M 소리', 320, 344, { align: 'center', color: C.dim });
+    drawSoundButton();
+  }
+
+  // 소리 켜기/끄기 (오른쪽 위). 도트 스피커 + 음파 또는 X
+  function drawSoundButton() {
+    const r = UI.sound;
+    box(r.x, r.y, r.w, r.h, 'rgba(30,18,10,0.9)', C.ink);
+    const x = r.x + 8;
+    const y = r.y + 7;
+    const col = muted ? C.dim : '#fff';
+    rect(x, y + 3, 4, 5, col);
+    rect(x + 4, y + 2, 2, 7, col);
+    rect(x + 6, y, 2, 11, col);
+    if (muted) {
+      for (let k = 0; k < 5; k++) {
+        rect(x + 12 + k, y + 3 + k, 1, 1, C.danger);
+        rect(x + 16 - k, y + 3 + k, 1, 1, C.danger);
+      }
+    } else {
+      rect(x + 11, y + 3, 1, 5, col);
+      rect(x + 14, y + 1, 1, 9, col);
+      rect(x + 12, y + 2, 1, 1, col);
+      rect(x + 12, y + 8, 1, 1, col);
+      rect(x + 15, y, 1, 1, col);
+      rect(x + 15, y + 10, 1, 1, col);
+    }
   }
 
   // 자세한 규칙 (타이틀에서 H)
   function drawHelp(level = 'normal') {
+    const rules = DIFFICULTY[level].rules;
     ctx.drawImage(wood, 0, 0);
     dim(0.6);
-    text('자세한 규칙', 320, 14, { size: 24, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
+    text(`자세한 규칙 · ${DIFFICULTY[level].label}`, 320, 14, { size: 24, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
     const rows = [
       [touch ? '밥·상추 접시' : '밥(Q)·상추(R)', '누르면 바로 먹는다. 탄수화물·비타민', C.text],
       [touch ? '고기·버섯 접시' : '고기(W)·버섯(E)', touch ? '불판에 올린다. 노랗게 빛나면 음식을 탭' : '불판에 올린다. 익으면 Shift+칸 키로 먹기', C.text],
       [touch ? '불판 음식 탭' : '불판 칸 키', touch ? '빛나는 음식을 직접 탭해서 먹기' : '윗줄 Shift+Q W E R, 아랫줄 Shift+U I O P', C.cooked],
-      ['PERFECT', `익자마자(${CONFIG.perfectWindow}초 안) 먹으면 영양 x${CONFIG.perfectMul}`, C.warn],
+      ['PERFECT', `익자마자(${CONFIG.perfectWindow}초 안) 먹으면 x${CONFIG.perfectMul}, 이어 가면 최대 x${CONFIG.comboMax}`, C.warn],
       ['황금 고기', `가끔 고기 접시에 등장. 세 수치 모두 +${CONFIG.golden.gain}`, C.gold],
       ['청양고추', `상추 접시에 등장. 먹으면 CPU가 ${CONFIG.chili.stun}초 못 먹음`, C.danger],
-      ['헛손질', `잘못 누르면 ${CONFIG.fumbleLock}초 멈춤. 빈 접시·덜 익음은 수치 -${DIFFICULTY[level].penalty}`, C.danger],
+      ['헛손질', `잘못 누르면 ${CONFIG.fumbleLock}초 멈춤. 빈 접시·덜 익음은 수치 -${rules.fumblePenalty}`, C.danger],
       ['피버 타임', `가끔 ${CONFIG.fever.duration}초 동안 굽기 x${CONFIG.fever.cookMul}`, C.fever],
-      ['탐', '익고 4초 지나면 타서 저절로 치워진다', C.dim],
-      ['배고픔', '시간이 갈수록 수치가 빨리 준다', C.dim],
+      ['탐', `익고 ${rules.burnAfter}초 지나면 타서 저절로 치워진다`, C.dim],
+      ['배고픔', `시간이 갈수록 빨리 준다${rules.decayMul > 1 ? ` (이 난이도 x${rules.decayMul})` : ''}`, C.dim],
     ];
     box(40, 48, 560, 272, 'rgba(30,18,10,0.9)', C.ink);
     rows.forEach(([head, body, col], n) => {
@@ -958,6 +1015,7 @@ export function createRenderer(canvas) {
     text('일시정지', 320, 130, { size: 36, align: 'center' });
     button(UI.resume, '계속하기', { on: true, sub: touch ? null : 'ESC' });
     button(UI.quit, '처음으로', { sub: touch ? null : 'BACKSPACE' });
+    drawSoundButton();
   }
 
 
@@ -1248,5 +1306,5 @@ export function createRenderer(canvas) {
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
 
-  return { ctx, sprites, fx, setLabels, setTouch, consume, update, reset, drawTitle, drawHelp, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
+  return { ctx, sprites, fx, setLabels, setTouch, setMuted: (v) => (muted = v), consume, update, reset, drawTitle, drawHelp, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
 }

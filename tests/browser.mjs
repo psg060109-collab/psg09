@@ -277,6 +277,25 @@ await check('승패 연출: 끝나면 약 2초 애니메이션 → 0.8초 전 �
   await page.keyboard.press('Escape');
 });
 
+await check('난이도 규칙이 경기에 적용되고(어려움: 감소 x1.5·2.5초에 탐·벌점 8), M으로 소리를 끄고 켠다', async () => {
+  assert((await state(page, 'B.screen')) === 'title');
+  const before = await state(page, 'B.level');
+  const m0 = await state(page, 'B.muted');
+  await page.keyboard.press('KeyM');
+  assert((await state(page, 'B.muted')) === !m0, 'M 끄기');
+  await page.keyboard.press('KeyM');
+  assert((await state(page, 'B.muted')) === m0, 'M 켜기');
+  await page.keyboard.press('Digit3');
+  await page.keyboard.press('Space');
+  await until(page, "B.screen === 'play'");
+  const cfg = await page.evaluate(() => { const c = window.__bulpan.game.cfg; return [c.decayMul, c.burnAfter, c.fumblePenalty]; });
+  assert(cfg.join() === '1.5,2.5,8', cfg.join());
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press(`Digit${['easy', 'normal', 'hard'].indexOf(before) + 1}`);
+  assert((await state(page, 'B.level')) === before);
+});
+
 await check('카운트다운 중 ESC, 일시정지 중 BACKSPACE로 타이틀에 돌아간다', async () => {
   await page.keyboard.press('Escape');
   assert((await state(page, 'B.screen')) === 'title');

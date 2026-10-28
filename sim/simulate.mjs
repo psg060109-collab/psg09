@@ -2,7 +2,7 @@
 // 사용법: node sim/simulate.mjs [판 수]
 import { CONFIG } from '../js/config.js';
 import { createGame, step, mulberry32 } from '../js/game.js';
-import { BOTS, DIFFICULTY, createCpu } from '../js/ai.js';
+import { BOTS, DIFFICULTY, createCpu, rulesFor } from '../js/ai.js';
 
 const DT = 1 / CONFIG.tickRate;
 
@@ -59,7 +59,7 @@ export function vsCpu(level, human = 'skilled', n = 100) {
   let wins = 0;
   const times = [];
   for (let seed = 1; seed <= n; seed++) {
-    const g = createGame({ seed, fumblePenalty: DIFFICULTY[level].penalty });
+    const g = createGame({ seed, cfg: rulesFor(level) });
     const rng = mulberry32(seed * 104729 + 7);
     const cpu = createCpu(level, 1, seed * 31 + 3);
     const delay = () => h.reaction[0] + rng() * (h.reaction[1] - h.reaction[0]);
