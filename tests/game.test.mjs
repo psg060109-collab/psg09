@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { CONFIG, FOODS, decayRate } from '../js/config.js';
 import { createGame, step, pressFood, pressSlot, feverWarning } from '../js/game.js';
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
-import { buildFoodPixels, SIZE } from '../js/foodart.js';
+import { buildFoodPixels, SIZE, STAGES } from '../js/foodart.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking } from '../js/ranking.js';
 import { summarize, vsCpu } from '../sim/simulate.mjs';
@@ -34,7 +34,7 @@ test('스프라이트는 모두 16×16', () => {
   for (const [name, rows] of Object.entries(SPRITE_ROWS)) assert.ok(validateRows(rows), name);
 });
 
-test('음식 도트(탑뷰 44×44)는 모두 그려지고, 날것·익음·탐 모습이 서로 다르다', () => {
+test('음식 도트(탑뷰 44×44)는 모두 그려지고, 굽기 6단계가 모두 서로 다르다', () => {
   const f = buildFoodPixels();
   const filled = (px) => px.c.filter(Boolean).length;
   for (const px of [f.rice, f.lettuce, f.chili, ...['meat', 'golden', 'mushroom'].flatMap((k) => Object.values(f[k]))]) {
@@ -42,8 +42,8 @@ test('음식 도트(탑뷰 44×44)는 모두 그려지고, 날것·익음·탐 �
     assert.ok(filled(px) > 300, '너무 작게 그려짐');
   }
   for (const k of ['meat', 'golden', 'mushroom']) {
-    const [r, c, b] = ['raw', 'cooked', 'burnt'].map((st) => f[k][st].c.join());
-    assert.ok(r !== c && c !== b && r !== b, k);
+    const looks = STAGES.map(([st]) => f[k][st].c.join());
+    assert.equal(new Set(looks).size, STAGES.length, k);
   }
   // 같은 입력이면 항상 같은 그림 (무작위 아님)
   assert.equal(buildFoodPixels().meat.cooked.c.join(), f.meat.cooked.c.join());

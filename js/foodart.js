@@ -95,21 +95,27 @@ function rot(x, y, a) {
 }
 
 // ---------------------------------------------------------------- 팔레트
+// 고기·버섯은 날것 / 익음 / 탐 세 기준 색을 두고, 굽는 정도에 따라 그 사이를 섞는다 (단계 수가 같아야 한다)
 const PAL = {
   meat: {
-    raw: { lean: ['#6a1622', '#962636', '#c23c4c', '#e2606c', '#f89098'], fat: ['#c8a8a4', '#e4d0cc', '#f6eae8', '#ffffff'], edge: '#3e0a12', mark: null, crisp: null },
-    cooked: { lean: ['#4a1e0c', '#6e3414', '#9a4e1c', '#c4702a', '#e49444'], fat: ['#b0782c', '#d6a046', '#f0c468', '#fde6a4'], edge: '#2a1004', mark: '#2a1004', crisp: '#5a2a0e' },
-    burnt: { lean: ['#120c0a', '#1e1614', '#2c221e', '#3a2e28'], fat: ['#241c1a', '#342a26', '#463a34'], edge: '#050303', mark: '#000000', crisp: '#0a0606' },
+    // 날것: 분홍 살 + 하얀 비계
+    raw: { lean: ['#86222e', '#ae3642', '#cc4e58', '#e2707a', '#f29a9e'], fat: ['#d6c8c2', '#ece2de', '#f8f2f0', '#ffffff'], edge: '#4a0e16', crisp: '#ae3642' },
+    // 익음: 노릇한 갈색 살 + 투명하게 노래진 비계, 가장자리는 바삭하게 그을림
+    cooked: { lean: ['#56280e', '#7a401c', '#9a5a2e', '#b67644', '#d0965e'], fat: ['#d8a038', '#eebc58', '#fad67c', '#fff0ba'], edge: '#2e1406', crisp: '#6a3410' },
+    // 탐: 새까만 검정이 아니라 짙은 숯빛 갈색
+    burnt: { lean: ['#1e1410', '#2c1e18', '#3a2a20', '#48362a', '#584434'], fat: ['#2c2016', '#3c2c1e', '#4e3c2a', '#604c36'], edge: '#0c0806', crisp: '#140e0a' },
   },
   golden: {
-    raw: { lean: ['#7a3e04', '#ac680c', '#da941c', '#f6c03c', '#ffe68a'], fat: ['#ecd28a', '#faecbc', '#fffae6', '#ffffff'], edge: '#4a2802', mark: null, crisp: null },
-    cooked: { lean: ['#6a3604', '#9a580c', '#c88018', '#eca82a', '#ffd458'], fat: ['#d09a2e', '#f0c04e', '#ffe08a', '#fff6cc'], edge: '#3a1e02', mark: '#4a2402', crisp: '#8a5208' },
-    burnt: { lean: ['#120c0a', '#1e1614', '#2c221e', '#3a2e28'], fat: ['#241c1a', '#342a26', '#463a34'], edge: '#050303', mark: '#000000', crisp: '#0a0606' },
+    raw: { lean: ['#7a3e04', '#ac680c', '#da941c', '#f6c03c', '#ffe68a'], fat: ['#ecd28a', '#faecbc', '#fffae6', '#ffffff'], edge: '#4a2802', crisp: '#ac680c' },
+    cooked: { lean: ['#7a4206', '#a8640e', '#d08c1a', '#f0b02e', '#ffd860'], fat: ['#d8a032', '#f0c252', '#ffe08a', '#fff6cc'], edge: '#3e2002', crisp: '#8a5208' },
+    burnt: { lean: ['#1e1410', '#2c1e18', '#3a2a20', '#48362a', '#584434'], fat: ['#2c2016', '#3c2c1e', '#4e3c2a', '#604c36'], edge: '#0c0806', crisp: '#140e0a' },
   },
   mushroom: {
-    raw: { cap: ['#3a2010', '#583218', '#784624', '#985e34', '#b87a4a', '#d49c6c'], crack: ['#c8b08a', '#e6d4b2', '#f8eedc'], rim: '#2a160a', edge: '#1e1006', mark: null },
-    cooked: { cap: ['#1e0e06', '#34180a', '#4e2610', '#6c3818', '#8c4e22', '#ac6a32'], crack: ['#9a7448', '#c09a64', '#dcbc84'], rim: '#140804', edge: '#0e0602', mark: '#120802' },
-    burnt: { cap: ['#0c0908', '#16110e', '#201a16', '#2c241e', '#382e26'], crack: ['#3a302a', '#4a3e36', '#564a40'], rim: '#060404', edge: '#030202', mark: '#000000' },
+    // 날것: 옅은 밤색 갓 + 크림색 갈라짐
+    raw: { cap: ['#4a3018', '#664424', '#865c34', '#a47648', '#c09262', '#d8b080'], crack: ['#dccaa8', '#eee2ca', '#fbf6ea'], rim: '#36220e', edge: '#24160a' },
+    // 익음: 윤기 나는 진갈색 + 노릇해진 갈라짐
+    cooked: { cap: ['#2a160a', '#40220e', '#5a3216', '#764420', '#94582c', '#b0703c'], crack: ['#b08654', '#cca46e', '#e4c290'], rim: '#1c0e06', edge: '#120804' },
+    burnt: { cap: ['#16100c', '#201812', '#2c2018', '#38291e', '#443226', '#503c2e'], crack: ['#3e3228', '#4c3e32', '#5a4a3c'], rim: '#0c0806', edge: '#060404' },
   },
   rice: {
     grain: ['#a29a8a', '#c6beac', '#e2dccc', '#f2eee4', '#fcfaf4', '#ffffff'],
@@ -120,8 +126,35 @@ const PAL = {
   chili: { body: ['#420406', '#7a0c14', '#b0181e', '#dc3630', '#f86a58', '#ffb0a0'], stem: ['#1a4210', '#2e6a1c', '#4e9430', '#7cc04c', '#aee07a'], edge: '#260204' },
 };
 
+// 굽기 단계: [이름, 익은 정도 d(0~1), 탄 정도 c(0~1)]
+export const STAGES = [
+  ['raw', 0, 0],
+  ['cook1', 0.35, 0],
+  ['cook2', 0.7, 0],
+  ['cooked', 1, 0],
+  ['char1', 1, 0.45],
+  ['burnt', 1, 1],
+];
+
+function mixColor(a, b, t) {
+  const [ar, ag, ab] = hex(a);
+  const [br, bg, bb] = hex(b);
+  const f = (x, y) => Math.round(x + (y - x) * t).toString(16).padStart(2, '0');
+  return `#${f(ar, br)}${f(ag, bg)}${f(ab, bb)}`;
+}
+
+function mixPal(a, b, t) {
+  const out = {};
+  for (const k of Object.keys(a)) out[k] = Array.isArray(a[k]) ? a[k].map((c, i) => mixColor(c, b[k][i], t)) : mixColor(a[k], b[k], t);
+  return out;
+}
+
+function stagePal(set, d, c) {
+  return mixPal(mixPal(set.raw, set.cooked, d), set.burnt, c);
+}
+
 // ---------------------------------------------------------------- 삼겹살: 위에서 본 납작한 한 줄
-function samgyeop(pal, state, angle, seed, sparkle = false) {
+function samgyeop(pal, d, c, angle, seed, sparkle = false) {
   const g = new Px();
   const half = { u: 19.5, v: 8.5 };
   for (let y = 0; y < N; y++) {
@@ -147,40 +180,34 @@ function samgyeop(pal, state, angle, seed, sparkle = false) {
       const nv = clamp(v / (half.v + 1));
       const nx = nu * nu * nu * Math.sign(nu) * 0.8;
       const ny = nv * nv * nv * Math.sign(nv) * 0.8 + nv * 0.15;
-      let l = (kind === 'fat' ? 0.55 : 0.42) + light(nx, ny, Math.sqrt(clamp(1 - nx * nx - ny * ny))) * 0.4;
-      // 살 속 잔 마블링
-      if (kind === 'lean' && state !== 'burnt' && hash(x, y, seed) > 0.88) {
-        g.set(x, y, pal.fat[state === 'raw' ? 1 : 2], pal.edge);
+      const l = (kind === 'fat' ? 0.55 : 0.42) + light(nx, ny, Math.sqrt(clamp(1 - nx * nx - ny * ny))) * 0.4;
+      // 살 속 잔 마블링 (타면 안 보임)
+      if (kind === 'lean' && c < 0.6 && hash(x, y, seed) > 0.88) {
+        g.set(x, y, pal.fat[d < 0.5 ? 1 : 2], pal.edge);
         continue;
       }
       g.set(x, y, shade(pal[kind], l, x, y), pal.edge);
     }
   }
-  if (state !== 'raw') {
-    // 바삭하게 그을린 가장자리 + 석쇠 자국
+  // 익으면 가장자리가 바삭하게 그을린다
+  if (d >= 0.7) {
     const snapshot = g.c.slice();
     for (let y = 0; y < N; y++) {
       for (let x = 0; x < N; x++) {
-        if (!snapshot[y * N + x]) continue;
-        if (g.edge(x, y) && hash(x, y, 9) > 0.35) g.set(x, y, pal.crisp);
-        const [u] = rot(x, y, angle);
-        const d = (((u - y * 0.15) % 10) + 10) % 10;
-        if (d < 2 && Math.abs(u) < 17 && !g.edge(x, y)) g.set(x, y, pal.mark);
+        if (snapshot[y * N + x] && g.edge(x, y)) g.set(x, y, pal.crisp);
       }
     }
   }
-  // 윤기 (기름 반짝임) / 탄 불씨
-  if (state !== 'burnt') {
-    const shine = state === 'raw' ? '#ffffff' : '#fff4c8';
+  // 윤기: 날것은 촉촉한 흰 반짝임, 굽는 중엔 기름 윤기, 타면 없음
+  if (c < 0.5) {
+    const shine = d < 0.3 ? '#ffffff' : '#fff2c4';
     for (const [du, dv] of [[-12, -4], [-11, -4], [-10, -4], [-3, 2], [-2, 2], [8, -5], [9, -5], [13, 3]]) {
       const x = Math.round(C0 + du * Math.cos(angle) - dv * Math.sin(angle));
       const y = Math.round(C0 + du * Math.sin(angle) + dv * Math.cos(angle));
       if (g.get(x, y) && !g.edge(x, y)) g.set(x, y, shine);
     }
-  } else {
-    for (const [x, y] of [[12, 18], [24, 24], [30, 19], [17, 26]]) if (g.get(x, y)) g.set(x, y, '#ff6a1a');
   }
-  if (sparkle && state !== 'burnt') {
+  if (sparkle && c < 0.5) {
     for (const [sx, sy] of [[4, 9], [39, 12], [36, 35], [6, 33]]) {
       g.set(sx, sy, '#ffffff');
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!g.get(sx + dx, sy + dy)) g.set(sx + dx, sy + dy, '#fff2a0');
@@ -190,13 +217,14 @@ function samgyeop(pal, state, angle, seed, sparkle = false) {
 }
 
 // ---------------------------------------------------------------- 표고버섯: 위에서 본 동그란 갓 + 화고 갈라짐
-function shiitake(pal, state) {
+function shiitake(pal, d, c) {
   const g = new Px();
-  const R = 17.5;
+  // 익을수록 수분이 빠져 조금 작아진다
+  const R = 17.5 - d * 1.2;
   // 갈라짐 무늬: 무작위 점들 사이의 경계선 (보로노이)
   const pts = Array.from({ length: 16 }, (_, k) => {
     const a = hash(k, 1, 5) * Math.PI * 2;
-    const r = Math.sqrt(hash(k, 2, 5)) * R * 0.85;
+    const r = Math.sqrt(hash(k, 2, 5)) * 17.5 * 0.85;
     return [Math.cos(a) * r, Math.sin(a) * r];
   });
   for (let y = 0; y < N; y++) {
@@ -215,13 +243,13 @@ function shiitake(pal, state) {
       if (t > 0.9) l -= 0.25; // 말린 테두리 그늘
       let col = shade(pal.cap, l, x, y);
       // 화고 갈라짐 (가장자리 근처는 없음)
-      if (t < 0.84 && state !== 'burnt') {
+      if (t < 0.84) {
         let d1 = 1e9;
         let d2 = 1e9;
         for (const [px, py] of pts) {
-          const d = Math.hypot(dx - px, dy - py);
-          if (d < d1) [d1, d2] = [d, d1];
-          else if (d < d2) d2 = d;
+          const dd = Math.hypot(dx * (17.5 / R) - px, dy * (17.5 / R) - py);
+          if (dd < d1) [d1, d2] = [dd, d1];
+          else if (dd < d2) d2 = dd;
         }
         const w = 0.9 + (1 - t) * 0.5;
         if (d2 - d1 < w) col = shade(pal.crack, 0.4 + light(nx, ny, 0.8) * 0.7, x, y);
@@ -237,20 +265,11 @@ function shiitake(pal, state) {
       if (r > R * 0.93 && r < R * 0.97 && hash(x, y, 3) > 0.3) g.set(x, y, pal.rim);
     }
   }
-  if (state !== 'raw') {
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        if (!g.get(x, y) || g.edge(x, y)) continue;
-        const d = (((x - y * 0.8) % 9) + 9) % 9;
-        if (d < 1.6 && Math.hypot(x - C0, y - C0) < R * 0.85) g.set(x, y, pal.mark);
-      }
-    }
-  }
-  if (state !== 'burnt') {
-    const shine = state === 'raw' ? '#f4dcb4' : '#ffe2a8';
-    for (const [x, y] of [[13, 12], [14, 11], [15, 11], [12, 13], [16, 10]]) if (g.get(x, y)) g.set(x, y, shine);
-  } else {
-    for (const [x, y] of [[17, 20], [26, 15], [22, 28]]) g.set(x, y, '#ff6a1a');
+  // 윤기: 익을수록 반짝임이 커진다 (구운 버섯의 물기)
+  if (c < 0.5) {
+    const shine = d < 0.3 ? '#f4dcb4' : '#ffe6b0';
+    const spots = d < 0.5 ? [[13, 12], [14, 11], [15, 11], [12, 13]] : [[13, 12], [14, 11], [15, 11], [12, 13], [16, 10], [27, 26], [28, 25]];
+    for (const [x, y] of spots) if (g.get(x, y)) g.set(x, y, shine);
   }
   return g.outline();
 }
@@ -379,12 +398,13 @@ function chili() {
 }
 
 // ---------------------------------------------------------------- 내보내기
+// 고기·버섯·황금 고기는 STAGES의 여섯 단계 모두 만든다 (raw, cook1, cook2, cooked, char1, burnt)
 export function buildFoodPixels() {
   const out = { rice: rice(), lettuce: lettuce(), chili: chili(), meat: {}, golden: {}, mushroom: {} };
-  for (const st of ['raw', 'cooked', 'burnt']) {
-    out.meat[st] = samgyeop(PAL.meat[st], st, -0.22, 1);
-    out.golden[st] = samgyeop(PAL.golden[st], st, 0.2, 2, true);
-    out.mushroom[st] = shiitake(PAL.mushroom[st], st);
+  for (const [name, d, c] of STAGES) {
+    out.meat[name] = samgyeop(stagePal(PAL.meat, d, c), d, c, -0.22, 1);
+    out.golden[name] = samgyeop(stagePal(PAL.golden, d, c), d, c, 0.2, 2, true);
+    out.mushroom[name] = shiitake(stagePal(PAL.mushroom, d, c), d, c);
   }
   return out;
 }

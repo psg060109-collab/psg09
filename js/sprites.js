@@ -1,4 +1,4 @@
-import { buildFoodPixels, toCanvas, halve } from './foodart.js';
+import { buildFoodPixels, toCanvas, halve, STAGES } from './foodart.js';
 
 // 16×16 도트 스프라이트. 문자 한 개 = 픽셀 한 개, '.'은 투명.
 
@@ -158,9 +158,10 @@ export function buildSprites() {
   icon.plateFood = [icon.rice, icon.rawMeat, icon.mushroom, icon.lettuce];
 
   const s = { icon, rice: toCanvas(f.rice), lettuce: toCanvas(f.lettuce), chili: toCanvas(f.chili) };
+  // 굽기 6단계: raw, cook1, cook2, cooked, char1, burnt
   for (const id of ['meat', 'mushroom', 'golden']) {
     s[id] = {};
-    for (const st of ['raw', 'cooked', 'burnt']) s[id][st] = toCanvas(f[id][st]);
+    for (const [st] of STAGES) s[id][st] = toCanvas(f[id][st]);
   }
   // 접시 위에 놓인 고기·버섯은 날것
   s.plateFood = [s.rice, s.meat.raw, s.mushroom.raw, s.lettuce];

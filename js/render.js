@@ -613,6 +613,16 @@ export function createRenderer(canvas) {
     return Array.from({ length: 24 }, () => ({ x: COAL.x + Math.floor(rnd() * COAL.w), y: COAL.y + Math.floor(rnd() * COAL.h), ph: rnd() * 6.28 }));
   })();
 
+  // 굽는 정도에 맞는 그림: 날것 → 익는 중(2단계) → 익음 → 타기 시작 → 탐
+  function stageOf(it) {
+    if (it.state === 'raw') {
+      const r = it.progress / it.cookTime;
+      return r < 0.4 ? 'raw' : r < 0.75 ? 'cook1' : 'cook2';
+    }
+    if (it.state === 'cooked') return it.cookedFor / CONFIG.burnAfter < 0.55 ? 'cooked' : 'char1';
+    return 'burnt';
+  }
+
   function drawGrill(g) {
     const fever = g.fever.active;
     const G = GRILL;
@@ -641,8 +651,7 @@ export function createRenderer(canvas) {
       const v = Math.sin(fx.time * (fever ? 9 : 3) + s.ph);
       if (v > 0.6) rect(s.x, s.y, 1, 1, fever ? '#fff3a0' : '#ffb03a');
     }
-    // 석쇠: 받침대 2개 + 가로 살 (그림자 · 몸통 · 하이라이트)
-    for (const rx of [COAL.x + Math.round(COAL.w / 3), COAL.x + Math.round((2 * COAL.w) / 3)]) rect(rx, COAL.y, 2, COAL.h, '#2e2e36');
+    // 석쇠: 가로 살 (그림자 · 몸통 · 하이라이트)
     for (let y = COAL.y + 3; y < COAL.y + COAL.h - 1; y += 8) {
       rect(COAL.x, y + 2, COAL.w, 1, 'rgba(0,0,0,0.5)');
       rect(COAL.x, y, COAL.w, 2, '#3e3e48');
@@ -653,7 +662,7 @@ export function createRenderer(canvas) {
       const [cx, cy] = slotCenter(i);
       if (fx.flashSlot[i] > 0) rect(cx - 26, cy - 26, 52, 52, 'rgba(255,255,255,0.4)');
       if (!it) return;
-      const img = (it.golden ? sprites.golden : sprites[FOODS[it.food].id])[it.state];
+      const img = (it.golden ? sprites.golden : sprites[FOODS[it.food].id])[stageOf(it)];
       const sizzle = it.state !== 'burnt' ? Math.round(Math.sin(fx.time * 20 + i) * 0.6) : 0;
 
       ellipse(cx + 3, cy + 5, 20, 12, 'rgba(0,0,0,0.5)');
