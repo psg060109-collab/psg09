@@ -219,13 +219,13 @@ test('헛손질 벌점으로 수치가 0이 되면 다음 틱에 진다', () => 
   assert.equal(g.over.cause[0], 'vitamin');
 });
 
-test('어려움: 수치가 기본의 2배로 줄고, 익은 음식은 1.8초 만에 탄다', () => {
+test('어려움: 수치가 기본의 3.3배로 줄고, 익은 음식은 1.8초 만에 탄다', () => {
   const g = newGame({ cfg: rulesFor('hard') });
   run(g, 10);
   const base = newGame();
   run(base, 10);
   const lost = (x) => CONFIG.statStart - x.players[0].stats.carb;
-  assert.ok(Math.abs(lost(g) / lost(base) - 2) < 0.01, `${lost(g)} / ${lost(base)}`);
+  assert.ok(Math.abs(lost(g) / lost(base) - 3.3) < 0.01, `${lost(g)} / ${lost(base)}`);
   const h = newGame({ cfg: rulesFor('hard') });
   h.grill[0] = item(MEAT, 'cooked');
   run(h, 1.7);
@@ -553,10 +553,15 @@ test('난이도: 보통은 잘하는 사람도 20~45%만 이긴다', () => {
   assert.ok(wins >= 20 && wins <= 45, wins);
 });
 
-test('난이도: 어려움은 잘하는 사람도 10% 미만, 그래도 한 판이 2분은 간다', () => {
-  const r = vsCpu('hard', 'skilled', 100);
-  assert.ok(r.wins < 10, r.wins);
-  assert.ok(r.avg >= 120, r.avg);
+test('난이도: 어려움은 잘하는 사람도 10% 미만으로만 이긴다', () => {
+  assert.ok(vsCpu('hard', 'skilled', 100).wins < 10);
+});
+
+test('난이도: 한 판 평균(잘하는 사람) — 쉬움 약 3분 · 보통 약 2분 · 어려움 약 1분', () => {
+  const avg = Object.fromEntries(LEVELS.map((lv) => [lv, vsCpu(lv, 'skilled', 100).avg]));
+  assert.ok(avg.easy >= 155 && avg.easy <= 205, `쉬움 ${avg.easy}`);
+  assert.ok(avg.normal >= 100 && avg.normal <= 140, `보통 ${avg.normal}`);
+  assert.ok(avg.hard >= 48 && avg.hard <= 75, `어려움 ${avg.hard}`);
 });
 
 test('난이도: 쉬움 < 보통 < 어려움 순서로 이기기 어렵다', () => {

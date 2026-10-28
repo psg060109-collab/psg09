@@ -277,7 +277,7 @@ await check('승패 연출: 끝나면 약 2초 애니메이션 → 0.8초 전 �
   await page.keyboard.press('Escape');
 });
 
-await check('난이도 규칙이 경기에 적용되고(어려움: 감소 x2·1.8초에 탐·벌점 12), M으로 소리를 끄고 켠다', async () => {
+await check('난이도 규칙이 경기에 적용되고(어려움: 감소 x3.3·1.8초에 탐·벌점 12), M으로 소리를 끄고 켠다', async () => {
   assert((await state(page, 'B.screen')) === 'title');
   const before = await state(page, 'B.level');
   const m0 = await state(page, 'B.muted');
@@ -289,7 +289,7 @@ await check('난이도 규칙이 경기에 적용되고(어려움: 감소 x2·1.
   await page.keyboard.press('Space');
   await until(page, "B.screen === 'play'");
   const cfg = await page.evaluate(() => { const c = window.__bulpan.game.cfg; return [c.decayMul, c.burnAfter, c.fumblePenalty]; });
-  assert(cfg.join() === '2,1.8,12', cfg.join());
+  assert(cfg.join() === '3.3,1.8,12', cfg.join());
   await page.keyboard.press('Escape');
   await page.keyboard.press('Backspace');
   await page.keyboard.press(`Digit${['easy', 'normal', 'hard'].indexOf(before) + 1}`);
@@ -372,8 +372,8 @@ await check('통째 플레이: 상태를 건드리지 않고 부팅→시작→C
   });
   await p.close();
   assert(r.winner === 1 && r.cause, JSON.stringify(r));
-  // 기본 난이도(쉬움)는 감소 1.5배라 아무것도 안 하면 약 33초에 쓰러진다
-  assert(r.time > 28 && r.time < 40, `쓰러진 시간 ${r.time}`);
+  // 기본 난이도(쉬움)는 감소 1.8배라 아무것도 안 하면 약 28초에 쓰러진다
+  assert(r.time > 22 && r.time < 34, `쓰러진 시간 ${r.time}`);
   assert(r.cpuAte > 10, `CPU가 먹은 수 ${r.cpuAte}`);
 });
 
