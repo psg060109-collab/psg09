@@ -219,16 +219,16 @@ test('헛손질 벌점으로 수치가 0이 되면 다음 틱에 진다', () => 
   assert.equal(g.over.cause[0], 'vitamin');
 });
 
-test('어려움: 수치가 1.5배 빨리 줄고, 익은 음식은 2.5초 만에 탄다', () => {
+test('어려움: 수치가 기본의 2배로 줄고, 익은 음식은 1.8초 만에 탄다', () => {
   const g = newGame({ cfg: rulesFor('hard') });
   run(g, 10);
-  const easy = newGame({ cfg: rulesFor('easy') });
-  run(easy, 10);
+  const base = newGame();
+  run(base, 10);
   const lost = (x) => CONFIG.statStart - x.players[0].stats.carb;
-  assert.ok(Math.abs(lost(g) / lost(easy) - 1.5) < 0.01, `${lost(g)} / ${lost(easy)}`);
+  assert.ok(Math.abs(lost(g) / lost(base) - 2) < 0.01, `${lost(g)} / ${lost(base)}`);
   const h = newGame({ cfg: rulesFor('hard') });
   h.grill[0] = item(MEAT, 'cooked');
-  run(h, 2.4);
+  run(h, 1.7);
   assert.equal(h.grill[0].state, 'cooked');
   run(h, 0.2);
   assert.equal(h.grill[0].state, 'burnt');
@@ -543,21 +543,24 @@ test('밸런스: 황금 고기·고추를 노리는 쪽이 무시하는 쪽보�
   assert.ok(r.wins[0] >= 110, `노린 쪽 승 ${r.wins[0]}/200`);
 });
 
-test('난이도: 처음 하는 사람은 쉬움 CPU를 70% 이상 이긴다', () => {
-  assert.ok(vsCpu('easy', 'beginner', 100).wins >= 70);
+test('난이도: 쉬움(예전 어려움)은 잘하는 사람이 50~80% 이긴다', () => {
+  const { wins } = vsCpu('easy', 'skilled', 100);
+  assert.ok(wins >= 50 && wins <= 80, wins);
 });
 
-test('난이도: 보통 실력은 보통 CPU를 50~85% 이긴다', () => {
-  const { wins } = vsCpu('normal', 'average', 100);
-  assert.ok(wins >= 50 && wins <= 85, wins);
+test('난이도: 보통은 잘하는 사람도 20~45%만 이긴다', () => {
+  const { wins } = vsCpu('normal', 'skilled', 100);
+  assert.ok(wins >= 20 && wins <= 45, wins);
 });
 
-test('난이도: 어려움 CPU는 잘하는 사람도 75% 미만으로만 이긴다', () => {
-  assert.ok(vsCpu('hard', 'skilled', 100).wins < 75);
+test('난이도: 어려움은 잘하는 사람도 10% 미만, 그래도 한 판이 2분은 간다', () => {
+  const r = vsCpu('hard', 'skilled', 100);
+  assert.ok(r.wins < 10, r.wins);
+  assert.ok(r.avg >= 120, r.avg);
 });
 
 test('난이도: 쉬움 < 보통 < 어려움 순서로 이기기 어렵다', () => {
-  const w = LEVELS.map((lv) => vsCpu(lv, 'average', 100).wins);
+  const w = LEVELS.map((lv) => vsCpu(lv, 'skilled', 100).wins);
   assert.ok(w[0] > w[1] && w[1] > w[2], JSON.stringify(w));
 });
 

@@ -70,9 +70,10 @@ export const BOTS = {
 export const DIFFICULTY = {
   // rules: 그 난이도에서 바뀌는 게임 규칙 (나·CPU 모두 똑같이 적용)
   //  fumblePenalty 헛손질 벌점 · decayMul 수치 감소 배수 · burnAfter 익은 뒤 탈 때까지(초)
-  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false, rules: { fumblePenalty: 3, decayMul: 1.0, burnAfter: 4.0 } },
-  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true, rules: { fumblePenalty: 5, decayMul: 1.2, burnAfter: 3.5 } },
-  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true, rules: { fumblePenalty: 8, decayMul: 1.5, burnAfter: 2.5 } },
+  // 쉬움 = 예전 어려움. 보통·어려움은 사람보다 빠른 손 + 더 빠른 배고픔으로 도전용
+  easy: { label: '쉬움', reaction: [0.24, 0.36], slip: 0, specials: true, rules: { fumblePenalty: 8, decayMul: 1.5, burnAfter: 2.5 } },
+  normal: { label: '보통', reaction: [0.2, 0.28], slip: 0, specials: true, rules: { fumblePenalty: 10, decayMul: 1.75, burnAfter: 2.0 } },
+  hard: { label: '어려움', reaction: [0.14, 0.2], slip: 0, specials: true, rules: { fumblePenalty: 12, decayMul: 2.0, burnAfter: 1.8 } },
 };
 
 export function rulesFor(level) {
