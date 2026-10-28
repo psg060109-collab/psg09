@@ -23,7 +23,7 @@ const C = {
   stat: { protein: '#f08aa0', carb: '#f4ead0', vitamin: '#7fd65a' },
   warn: '#ffcf3a',
   danger: '#ff3a3a',
-  cooked: '#5dff6a',
+  cooked: '#ffd23a', // 먹을 수 있음 = 노란색
   raw: '#ff6a4a',
   fever: '#ff7a1a',
   gold: '#ffd84a',
@@ -260,7 +260,7 @@ export function createRenderer(canvas) {
     ctx.drawImage(img, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
   }
 
-  // 음식 모양을 따라 그리는 빛 테두리 (익음 = 초록, 퍼펙트 = 금색)
+  // 음식 모양을 따라 그리는 빛 테두리 (익음 = 노랑, 퍼펙트 = 흰색·주황 깜빡임)
   const silCache = new Map();
   function silhouette(img, color) {
     let byColor = silCache.get(img);
@@ -312,10 +312,10 @@ export function createRenderer(canvas) {
     }
   }
 
-  // Shift 조합 키 칩. ready = 지금 먹을 수 있는 칸 (밝은 초록), 아니면 흐리게
+  // Shift 조합 키 칩. ready = 지금 먹을 수 있는 칸 (노랑), 아니면 흐리게
   function shiftChip(x, y, code, ready = false, perfect = false) {
-    const fill = ready ? (perfect && blink(12) ? '#e0b020' : '#28a838') : '#2a3230';
-    const fg = ready ? '#fff' : '#7d8a84';
+    const fill = ready ? (perfect && blink(12) ? '#ffffff' : '#ffc81e') : '#2a3230';
+    const fg = ready ? '#3a2200' : '#7d8a84';
     rect(x - 12, y, 24, 14, ready ? '#0a2a10' : '#141a18');
     rect(x - 11, y + 1, 22, 12, fill);
     if (ready) rect(x - 11, y + 1, 22, 1, 'rgba(255,255,255,0.35)');
@@ -324,7 +324,7 @@ export function createRenderer(canvas) {
     rect(ax + 1, y + 4, 3, 1, fg);
     rect(ax, y + 5, 5, 1, fg);
     rect(ax + 1, y + 6, 3, 4, fg);
-    text(keyLabel(code), x + 4, y + 1, { align: 'center', color: fg, shadow: ready ? '#0a3a10' : null });
+    text(keyLabel(code), x + 4, y + 1, { align: 'center', color: fg, shadow: null });
   }
 
   // 나무 상판 (타이틀·키 테스트 배경)
@@ -683,10 +683,10 @@ export function createRenderer(canvas) {
       ellipse(cx + 3, cy + 5, 20, 12, 'rgba(0,0,0,0.5)');
       if (it.golden && it.state !== 'burnt') disc(cx, cy, 22, 'rgba(255,216,74,0.2)');
       if (it.state === 'cooked') {
-        // 익음: 음식 모양을 따라 초록 빛 테두리. 퍼펙트 구간은 금색, 곧 탈 때는 빠르게 깜빡
+        // 익음: 음식 모양을 따라 노란 빛 테두리. 퍼펙트 구간은 흰색·주황, 곧 탈 때는 빠르게 깜빡
         const perfect = it.cookedFor <= CONFIG.perfectWindow;
         const late = it.cookedFor > CONFIG.burnAfter - 1.5;
-        const color = perfect ? (blink(12) ? '#ffe14a' : '#ffffff') : late && !blink(10) ? '#1f8a2a' : '#5dff6a';
+        const color = perfect ? (blink(12) ? '#ff8a1a' : '#ffffff') : late && !blink(10) ? '#8a6a10' : C.cooked;
         glow(img, cx, cy + sizzle, color, 2);
       }
       if (it.state === 'burnt') ctx.globalAlpha = Math.max(0.2, 1 - (it.burntFor || 0) / CONFIG.burntClear);
@@ -779,7 +779,7 @@ export function createRenderer(canvas) {
     // 3단계 안내 카드
     const cards = [
       ['1  접시 키', '고기·버섯은 불판으로'],
-      ['2  먹기', '초록으로 빛나면 Shift+키'],
+      ['2  먹기', '노랗게 빛나면 Shift+키'],
       ['3  버티기', '셋 중 하나라도 0이면 패배'],
     ];
     cards.forEach(([head, line], k) => {
@@ -793,9 +793,9 @@ export function createRenderer(canvas) {
           art(sprites.icon.plateFood[n], x + 27 + n * 40, y + 66);
         });
       } else if (k === 1) {
-        glow(sprites.meat.cooked, x + 46, y + 52, '#5dff6a', 2);
+        glow(sprites.meat.cooked, x + 46, y + 52, C.cooked, 2);
         art(sprites.meat.cooked, x + 46, y + 52);
-        bigKey(x + 92, y + 40, 'Shift', 44, '#28a838', '#fff');
+        bigKey(x + 92, y + 40, 'Shift', 44, '#ffc81e', '#3a2200');
         text('+', x + 141, y + 43, { align: 'center' });
         bigKey(x + 150, y + 40, 'Q');
       } else {
