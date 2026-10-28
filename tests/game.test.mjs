@@ -6,7 +6,8 @@ import { createGame, step, pressFood, feverWarning } from '../js/game.js';
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
 import { lookup, GAME_CODES } from '../js/input.js';
 import { qualifies, insertRanking } from '../js/ranking.js';
-import { summarize } from '../sim/simulate.mjs';
+import { summarize, vsCpu } from '../sim/simulate.mjs';
+import { createCpu, LEVELS } from '../js/ai.js';
 
 const DT = 1 / 60;
 const RICE = 0, MEAT = 1, MUSH = 2, LETTUCE = 3;
@@ -32,13 +33,13 @@ test('스프라이트는 모두 16×16', () => {
   for (const [name, rows] of Object.entries(SPRITE_ROWS)) assert.ok(validateRows(rows), name);
 });
 
-test('키는 음식별 4개: 1P Q·W·E·R, 2P U·I·O·P (모두 8개)', () => {
+test('키는 음식별 4개 Q·W·E·R (사람은 1P뿐, 2P는 CPU)', () => {
   assert.deepEqual(lookup('KeyQ'), { player: 0, index: RICE });
   assert.deepEqual(lookup('KeyW'), { player: 0, index: MEAT });
-  assert.deepEqual(lookup('KeyO'), { player: 1, index: MUSH });
-  assert.deepEqual(lookup('KeyP'), { player: 1, index: LETTUCE });
-  assert.equal(GAME_CODES.length, 8);
-  assert.equal(lookup('KeyA'), null);
+  assert.deepEqual(lookup('KeyE'), { player: 0, index: MUSH });
+  assert.deepEqual(lookup('KeyR'), { player: 0, index: LETTUCE });
+  assert.equal(GAME_CODES.length, 4);
+  assert.equal(lookup('KeyU'), null);
 });
 
 test('시간이 지나면 두 플레이어의 세 수치가 같은 속도로 줄어든다', () => {
@@ -385,12 +386,40 @@ test('같은 시드면 피버·특수 음식 시점이 매번 같다', () => {
 });
 
 // ---------- 랭킹 ----------
-test('랭킹은 대결 시간이 긴 순서로 5개까지', () => {
+test('랭킹은 빨리 이긴 순서로 5개까지', () => {
   let list = [];
   for (const t of [100, 300, 200, 50, 400, 250]) list = insertRanking(list, { name: 'A', time: t });
-  assert.deepEqual(list.map((r) => r.time), [400, 300, 250, 200, 100]);
-  assert.ok(!qualifies(list, 90));
-  assert.ok(qualifies(list, 101));
+  assert.deepEqual(list.map((r) => r.time), [50, 100, 200, 250, 300]);
+  assert.ok(!qualifies(list, 310));
+  assert.ok(qualifies(list, 299));
+});
+
+// ---------- CPU ----------
+test('CPU는 혼자서도 굽고 먹으며, 같은 시드면 똑같이 움직인다', () => {
+  const play = () => {
+    const g = newGame();
+    const cpu = createCpu('normal', 1, 5);
+    for (let i = 0; i < 60 * 30; i++) {
+      step(g, DT);
+      cpu.update(g);
+    }
+    return g.players[1];
+  };
+  const a = play();
+  const b = play();
+  assert.ok(Object.values(a.eaten).reduce((x, y) => x + y) > 5);
+  assert.deepEqual(a.eaten, b.eaten);
+  assert.deepEqual(a.stats, b.stats);
+});
+
+test('CPU는 1P(사람) 자리를 건드리지 않는다', () => {
+  const g = newGame();
+  const cpu = createCpu('hard', 1, 9);
+  for (let i = 0; i < 60 * 20; i++) {
+    step(g, DT);
+    cpu.update(g);
+  }
+  assert.ok(Object.values(g.players[0].eaten).every((n) => n === 0));
 });
 
 // ---------- 밸런스 (headless 시뮬레이션) ----------
@@ -409,6 +438,24 @@ test('밸런스: 키를 아무리 빨리 연타해도 생각하며 플레이하�
 test('밸런스: 황금 고기·고추를 노리는 쪽이 무시하는 쪽보다 더 많이 이긴다 (55% 이상)', () => {
   const r = summarize('greedy', 'plain', 200);
   assert.ok(r.wins[0] >= 110, `노린 쪽 승 ${r.wins[0]}/200`);
+});
+
+test('난이도: 처음 하는 사람은 쉬움 CPU를 70% 이상 이긴다', () => {
+  assert.ok(vsCpu('easy', 'beginner', 100).wins >= 70);
+});
+
+test('난이도: 보통 실력은 보통 CPU를 50~85% 이긴다', () => {
+  const { wins } = vsCpu('normal', 'average', 100);
+  assert.ok(wins >= 50 && wins <= 85, wins);
+});
+
+test('난이도: 어려움 CPU는 잘하는 사람도 75% 미만으로만 이긴다', () => {
+  assert.ok(vsCpu('hard', 'skilled', 100).wins < 75);
+});
+
+test('난이도: 쉬움 < 보통 < 어려움 순서로 이기기 어렵다', () => {
+  const w = LEVELS.map((lv) => vsCpu(lv, 'average', 100).wins);
+  assert.ok(w[0] > w[1] && w[1] > w[2], JSON.stringify(w));
 });
 
 test('밸런스: 피버가 실제로 이득이다 (피버 켠 쪽이 평균적으로 더 오래 버팀)', () => {

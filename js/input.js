@@ -1,9 +1,6 @@
-// 키 배치. 음식 하나에 키 하나 (밥 · 고기 · 버섯 · 상추).
+// 키 배치. 음식 하나에 키 하나 (밥 · 고기 · 버섯 · 상추). 사람은 1P 하나뿐, 2P는 CPU.
 // event.code를 쓰므로 한/영 상태와 관계없이 동작한다.
-export const KEYMAP = [
-  { foods: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'] },
-  { foods: ['KeyU', 'KeyI', 'KeyO', 'KeyP'] },
-];
+export const KEYMAP = [{ foods: ['KeyQ', 'KeyW', 'KeyE', 'KeyR'] }];
 
 const LABEL = { Semicolon: ';', Comma: ',', Period: '.', Slash: '/' };
 export function keyLabel(code) {
@@ -26,7 +23,7 @@ export function attachInput(target, onKey) {
   const held = new Set();
   target.addEventListener('keydown', (e) => {
     const action = lookup(e.code);
-    if (action || e.code === 'Space' || e.code === 'Escape' || e.code === 'Tab' || e.code === 'Backspace') e.preventDefault();
+    if (action || ['Space', 'Escape', 'Tab', 'Backspace', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     held.add(e.code);
     if (e.repeat) return;
     onKey(e.code, action, e);

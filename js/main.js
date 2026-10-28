@@ -1,5 +1,6 @@
 import { CONFIG } from './config.js';
 import { createGame, step, pressFood } from './game.js';
+import { createCpu, DIFFICULTY, LEVELS } from './ai.js';
 import { attachInput } from './input.js';
 import { createRenderer, W, H } from './render.js';
 import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js';
@@ -7,15 +8,36 @@ import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js
 const canvas = document.getElementById('game');
 const STEP = 1 / CONFIG.tickRate;
 const RESULT_LOCK = 1.2; // 끝난 직후 연타로 바로 재시작되는 것 방지
+const LEVEL_KEY = 'bulpan-level';
 
 let screen = 'title'; // title | keytest | countdown | play | pause | result
 let game = null;
+let cpu = null;
 let countdown = 0;
-let ranking = loadRanking();
-const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0 };
+let ranking = loadRanking(LEVELS);
+let level = loadLevel();
+const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0, cpuPaused: false };
 
 let renderer;
 let input;
+
+function loadLevel() {
+  try {
+    const v = localStorage.getItem(LEVEL_KEY);
+    return LEVELS.includes(v) ? v : 'easy';
+  } catch {
+    return 'easy';
+  }
+}
+
+function setLevel(v) {
+  level = v;
+  try {
+    localStorage.setItem(LEVEL_KEY, v);
+  } catch {
+    // 저장이 막혀 있어도 이번 세션 동안은 유지
+  }
+}
 
 function fit() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
@@ -25,8 +47,11 @@ function fit() {
 }
 
 function startMatch() {
-  game = createGame({ seed: (Math.random() * 2 ** 31) | 0 });
+  const seed = (Math.random() * 2 ** 31) | 0;
+  game = createGame({ seed });
+  cpu = createCpu(level, 1, seed ^ 0x5bd1e995);
   renderer.reset();
+  renderer.setLabels(['나', `CPU ${DIFFICULTY[level].label}`]);
   countdown = CONFIG.countdown + 0.6;
   screen = 'countdown';
 }
@@ -37,23 +62,28 @@ function finishMatch() {
   ui.ready = false;
   ui.rank = 0;
   ui.name = '';
-  ui.entering = qualifies(ranking, game.over.time);
+  ui.entering = game.over.winner === 0 && qualifies(ranking[level], game.over.time);
 }
 
 function saveName() {
   const entry = { name: ui.name || '???', time: game.over.time, date: Date.now() };
-  ranking = insertRanking(ranking, entry);
+  ranking = { ...ranking, [level]: insertRanking(ranking[level], entry) };
   saveRanking(ranking);
-  ui.rank = ranking.indexOf(entry) + 1;
+  ui.rank = ranking[level].indexOf(entry) + 1;
   ui.entering = false;
 }
 
 function onKey(code, action) {
   switch (screen) {
-    case 'title':
+    case 'title': {
+      const i = LEVELS.indexOf(level);
       if (code === 'Space') startMatch();
       else if (code === 'KeyT') screen = 'keytest';
+      else if (code === 'ArrowLeft') setLevel(LEVELS[Math.max(0, i - 1)]);
+      else if (code === 'ArrowRight') setLevel(LEVELS[Math.min(LEVELS.length - 1, i + 1)]);
+      else if (/^Digit[1-3]$/.test(code)) setLevel(LEVELS[Number(code.slice(5)) - 1]);
       break;
+    }
     case 'keytest':
       if (code === 'Escape') screen = 'title';
       break;
@@ -99,6 +129,7 @@ function update(dt) {
     if (countdown <= 0) screen = 'play';
   } else if (screen === 'play') {
     step(game, dt);
+    if (!ui.cpuPaused) cpu.update(game);
     if (game.over) finishMatch();
   } else if (screen === 'result') {
     if (ui.lock > 0) {
@@ -116,7 +147,7 @@ function update(dt) {
 function draw() {
   switch (screen) {
     case 'title':
-      return renderer.drawTitle(ranking);
+      return renderer.drawTitle(ranking[level], level);
     case 'keytest':
       return renderer.drawKeyTest(input.held);
     case 'countdown':
@@ -155,8 +186,15 @@ async function boot() {
   }
   requestAnimationFrame(frame);
 
-  // 검수용 훅 (자동 테스트에서 상태를 읽는다)
-  window.__bulpan = { get screen() { return screen; }, get game() { return game; }, get ranking() { return ranking; }, get held() { return [...input.held]; }, ui };
+  // 검수용 훅 (자동 테스트에서 상태를 읽고, CPU를 잠시 멈출 수 있다)
+  window.__bulpan = {
+    get screen() { return screen; },
+    get game() { return game; },
+    get ranking() { return ranking; },
+    get level() { return level; },
+    get held() { return [...input.held]; },
+    ui,
+  };
 }
 
 boot();

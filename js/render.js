@@ -4,6 +4,7 @@ import { CONFIG, FOODS, STATS, STAT_LABEL, decayRate } from './config.js';
 import { feverWarning, feverRemaining } from './game.js';
 import { KEYMAP, keyLabel } from './input.js';
 import { buildSprites } from './sprites.js';
+import { DIFFICULTY, LEVELS } from './ai.js';
 import { formatTime } from './ranking.js';
 
 export const W = 640;
@@ -47,6 +48,10 @@ export function createRenderer(canvas) {
   ctx.imageSmoothingEnabled = false;
   const sprites = buildSprites();
   const table = makeTable();
+  let labels = ['나', 'CPU'];
+  function setLabels(l) {
+    labels = l;
+  }
 
   const fx = {
     time: 0,
@@ -123,7 +128,7 @@ export function createRenderer(canvas) {
           if (ev.reason === 'spicy') fx.shakeSeat[ev.player] = 0.2;
           else if (ev.reason === 'empty' || ev.reason === 'full') {
             fx.shakePlate[ev.plate] = 0.25;
-            floater(PLATE_X[ev.plate] + (ev.player ? 14 : -14), PLATE_Y + 26, '헛손질!', C.p[ev.player], 12, 0.7);
+            floater(PLATE_X[ev.plate], PLATE_Y + 26, ev.player ? 'CPU 헛손질' : '헛손질!', C.p[ev.player], 12, 0.7);
           }
           break;
         case 'discard': {
@@ -285,7 +290,7 @@ export function createRenderer(canvas) {
     const danger = STATS.some((s) => p.stats[s] <= 15);
 
     box(x + 4, 8, SEAT_W - 8, 22, danger && blink(6) ? '#b81f1f' : C.pDark[pi], C.ink);
-    text(danger ? `${pi + 1}P 위험!` : `${pi + 1}P`, x + SEAT_W / 2, 13, { align: 'center', color: danger ? '#fff' : C.p[pi] });
+    text(danger ? `${labels[pi]} 위험!` : labels[pi], x + SEAT_W / 2, 13, { align: 'center', color: danger ? '#fff' : C.p[pi] });
 
     const icons = { protein: sprites.meat.cooked, carb: sprites.rice, vitamin: sprites.lettuce };
     STATS.forEach((s, row) => {
@@ -380,8 +385,7 @@ export function createRenderer(canvas) {
         rect(cx - 18, cy + 29, 36, 3, C.ink);
         rect(cx - 18, cy + 29, Math.round((36 * pl.timer) / food.refill), 3, g.fever.active ? C.fever : '#9ad0ff');
       }
-      keyChip(cx - 12, cy + 34, KEYMAP[0].foods[i], 0);
-      keyChip(cx + 12, cy + 34, KEYMAP[1].foods[i], 1);
+      keyChip(cx, cy + 34, KEYMAP[0].foods[i], 0);
     });
   }
 
@@ -497,13 +501,13 @@ export function createRenderer(canvas) {
   }
 
   // ---------- 화면별 ----------
-  function drawTitle(ranking) {
+  function drawTitle(ranking, level) {
     ctx.drawImage(table, 0, 0);
     dim(0.35);
     const deco = [sprites.meat.cooked, sprites.mushroom.cooked, sprites.rice, sprites.golden.cooked, sprites.lettuce, sprites.chili];
     deco.forEach((img, k) => sprite(img, 40 + k * 104, 10 + Math.round(Math.sin(fx.time * 2 + k) * 3), 2));
     text('불판 대첩', 320, 40, { size: 48, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
-    text('2인 고깃집 먹기 대전', 320, 92, { align: 'center', color: C.text });
+    text('고깃집 먹기 대결 vs CPU', 320, 92, { align: 'center', color: C.text });
 
     box(150, 110, 340, 138, '#2a1b11', C.ink);
     const rules = [
@@ -518,21 +522,30 @@ export function createRenderer(canvas) {
     ];
     rules.forEach(([r, col], i) => text(r, 320, 116 + i * 16, { align: 'center', color: col }));
 
-    [0, 1].forEach((pi) => {
-      const x = pi === 0 ? 10 : 494;
-      box(x, 110, 136, 138, C.pDark[pi], C.ink);
-      text(`${pi + 1}P`, x + 68, 114, { size: 24, align: 'center', color: C.p[pi] });
-      KEYMAP[pi].foods.forEach((code, i) => {
-        const y = 146 + i * 24;
-        keyChip(x + 34, y, code, pi);
-        sprite(sprites.plateFood[i], x + 50, y - 1, 1);
-        text(FOODS[i].name, x + 70, y + 1);
-      });
+    // 조작
+    box(10, 110, 136, 138, C.pDark[0], C.ink);
+    text('조작', 78, 116, { size: 24, align: 'center', color: C.p[0] });
+    KEYMAP[0].foods.forEach((code, i) => {
+      const y = 148 + i * 24;
+      keyChip(44, y, code, 0);
+      sprite(sprites.plateFood[i], 60, y - 1, 1);
+      text(FOODS[i].name, 80, y + 1);
     });
 
+    // 난이도
+    box(494, 110, 136, 138, '#2a1b11', C.ink);
+    text('상대 CPU', 562, 116, { align: 'center', color: C.p[1] });
+    LEVELS.forEach((lv, i) => {
+      const y = 140 + i * 28;
+      const on = lv === level;
+      box(506, y, 112, 24, on ? C.pDark[1] : '#3a2a20', on ? '#fff' : C.ink);
+      text(`${i + 1}  ${DIFFICULTY[lv].label}`, 562, y + 6, { align: 'center', color: on ? '#fff' : C.dim });
+    });
+    text('← → 또는 1·2·3', 562, 228, { align: 'center', color: C.dim });
+
     box(170, 256, 300, 76, '#2a1b11', C.ink);
-    text('명승부 TOP 5 (대결 시간)', 320, 260, { align: 'center', color: C.warn });
-    if (!ranking.length) text('아직 기록이 없어요', 320, 288, { align: 'center', color: C.dim });
+    text(`최단 승리 TOP 5 · ${DIFFICULTY[level].label}`, 320, 260, { align: 'center', color: C.warn });
+    if (!ranking.length) text('아직 이긴 사람이 없어요', 320, 288, { align: 'center', color: C.dim });
     ranking.forEach((r, i) => {
       const y = 276 + i * 11;
       text(`${i + 1}. ${r.name}`, 230, y, { color: i === 0 ? C.warn : C.text });
@@ -561,17 +574,17 @@ export function createRenderer(canvas) {
     dim(0.72);
     const o = g.over;
     box(120, 24, 400, 312, '#2a1b11', C.ink);
-    if (o.winner === -1) text('무승부!', 320, 30, { size: 36, align: 'center', color: C.warn, shadow: '#5a1a08' });
-    else text(`${o.winner + 1}P 승리!`, 320, 30, { size: 36, align: 'center', color: C.p[o.winner], shadow: C.ink });
+    const title = o.winner === -1 ? ['무승부!', C.warn] : o.winner === 0 ? ['승리!', C.gold] : ['패배...', C.p[1]];
+    text(title[0], 320, 30, { size: 36, align: 'center', color: title[1], shadow: C.ink });
     o.cause.forEach((s, pi) => {
-      if (s) text(`${pi + 1}P: ${STAT_LABEL[s]} 부족으로 쓰러짐`, 320, 76 + (o.winner === -1 ? pi * 14 : 0), { align: 'center', color: C.dim });
+      if (s) text(`${labels[pi]}: ${STAT_LABEL[s]} 부족으로 쓰러짐`, 320, 76 + (o.winner === -1 ? pi * 14 : 0), { align: 'center', color: C.dim });
     });
     text(`대결 시간 ${formatTime(o.time)}`, 320, 104, { size: 24, align: 'center' });
 
     [0, 1].forEach((pi) => {
       const p = g.players[pi];
       const x = pi === 0 ? 140 : 336;
-      text(`${pi + 1}P`, x + 82, 136, { align: 'center', color: C.p[pi] });
+      text(labels[pi], x + 82, 136, { align: 'center', color: C.p[pi] });
       FOODS.forEach((f, i) => {
         sprite(sprites.plateFood[i], x, 152 + i * 18, 1);
         text(`${f.name} ${p.eaten[f.id]}`, x + 20, 154 + i * 18);
@@ -586,8 +599,8 @@ export function createRenderer(canvas) {
     });
 
     if (ui.entering) {
-      box(170, 236, 300, 64, C.pDark[Math.max(0, o.winner)], C.ink);
-      text('명승부 TOP 5 진입! 이름 (영문·숫자 3자)', 320, 240, { align: 'center', color: C.warn });
+      box(170, 236, 300, 64, C.pDark[0], C.ink);
+      text('최단 승리 TOP 5 진입! 이름 (영문·숫자 3자)', 320, 240, { align: 'center', color: C.warn });
       const slots = [0, 1, 2].map((k) => ui.name[k] || (k === ui.name.length && blink(3) ? '_' : ' '));
       text(slots.join(' '), 320, 255, { size: 24, align: 'center' });
       text('ENTER 저장  ESC 건너뛰기', 320, 284, { align: 'center', color: C.dim });
@@ -602,11 +615,11 @@ export function createRenderer(canvas) {
     ctx.drawImage(table, 0, 0);
     dim(0.5);
     text('키 테스트', 320, 16, { size: 24, align: 'center' });
-    text('두 사람이 동시에 키를 꾹 눌러 보세요. 누른 키가 안 켜지면 고스팅이 있는 키보드예요.', 320, 50, { align: 'center', color: C.dim });
-    const row = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP'];
+    text('네 키를 한꺼번에 꾹 눌러 보세요. 누른 키가 안 켜지면 고스팅이 있는 키보드예요.', 320, 50, { align: 'center', color: C.dim });
+    const row = KEYMAP[0].foods;
     let count = 0;
     row.forEach((code, i) => {
-      const x = 150 + i * 34;
+      const x = 254 + i * 34;
       const y = 110;
       const pi = KEYMAP.findIndex((m) => m.foods.includes(code));
       const lit = held.has(code);
@@ -622,10 +635,9 @@ export function createRenderer(canvas) {
       text(keyLabel(code), x + 14, y + 6, { align: 'center', color: lit ? '#fff' : C.ink, shadow: null });
       sprite(sprites.plateFood[KEYMAP[pi].foods.indexOf(code)], x + 6, y + 30, 1);
     });
-    text(`동시에 인식된 게임 키: ${count}개`, 320, 196, { size: 24, align: 'center', color: count >= 8 ? C.cooked : C.text });
-    text('빨간 키 = 1P, 파란 키 = 2P', 320, 236, { align: 'center', color: C.dim });
+    text(`동시에 인식된 게임 키: ${count}개`, 320, 196, { size: 24, align: 'center', color: count >= 4 ? C.cooked : C.text });
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
 
-  return { ctx, sprites, fx, consume, update, reset, drawTitle, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
+  return { ctx, sprites, fx, setLabels, consume, update, reset, drawTitle, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
 }

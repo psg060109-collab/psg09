@@ -1,27 +1,34 @@
-// 부스 랭킹: 가장 오래 이어진 대결 TOP 5. 이 브라우저에만 저장된다.
-const KEY = 'bulpan-ranking-v1';
+// 부스 랭킹: 난이도별 최단 승리 시간 TOP 5. 이 브라우저에만 저장된다.
+const KEY = 'bulpan-ranking-v2';
 export const RANK_SIZE = 5;
 
-export function loadRanking(storage = globalThis.localStorage) {
-  try {
-    const list = JSON.parse(storage.getItem(KEY) || '[]');
-    return Array.isArray(list) ? list.filter((r) => typeof r.time === 'number').slice(0, RANK_SIZE) : [];
-  } catch {
-    return [];
-  }
+function clean(list) {
+  return Array.isArray(list) ? list.filter((r) => r && typeof r.time === 'number').slice(0, RANK_SIZE) : [];
 }
 
+// { easy: [...], normal: [...], hard: [...] }
+export function loadRanking(levels, storage = globalThis.localStorage) {
+  let data = {};
+  try {
+    data = JSON.parse(storage.getItem(KEY) || '{}') || {};
+  } catch {
+    data = {};
+  }
+  return Object.fromEntries(levels.map((lv) => [lv, clean(data[lv])]));
+}
+
+// 빨리 이길수록 좋은 기록
 export function qualifies(list, time) {
-  return list.length < RANK_SIZE || time > list[list.length - 1].time;
+  return list.length < RANK_SIZE || time < list[list.length - 1].time;
 }
 
 export function insertRanking(list, entry) {
-  return [...list, entry].sort((a, b) => b.time - a.time).slice(0, RANK_SIZE);
+  return [...list, entry].sort((a, b) => a.time - b.time).slice(0, RANK_SIZE);
 }
 
-export function saveRanking(list, storage = globalThis.localStorage) {
+export function saveRanking(ranking, storage = globalThis.localStorage) {
   try {
-    storage.setItem(KEY, JSON.stringify(list));
+    storage.setItem(KEY, JSON.stringify(ranking));
   } catch {
     // 저장이 막힌 브라우저에서는 이번 세션 동안만 유지
   }

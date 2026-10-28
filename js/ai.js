@@ -1,12 +1,12 @@
-// 밸런스 검수용 봇. 사람처럼 일정 간격(반응 시간)마다 키를 한 번씩 누른다.
-import { FOODS, STATS } from '../js/config.js';
-import { pressFood, feverWarning } from '../js/game.js';
+// 컴퓨터 상대(CPU)와 밸런스 검수용 봇. 사람처럼 일정 간격(반응 시간)마다 키를 한 번씩 누른다.
+import { FOODS, STATS } from './config.js';
+import { pressFood, feverWarning, mulberry32 } from './game.js';
 
 const RICE = 0, MEAT = 1, MUSH = 2, LETTUCE = 3;
 const FOOD_FOR = { carb: [RICE], protein: [MEAT], vitamin: [MUSH, LETTUCE] };
 
 // specials: 황금 고기·고추를 노리는지 (끄면 그런 게 있어도 신경 쓰지 않는다)
-function makeGreedy({ specials = true } = {}) {
+export function makeGreedy({ specials = true } = {}) {
   return function greedy(g, pi) {
     const p = g.players[pi];
     const room = (fi) => STATS.every((s) => !FOODS[fi].gain[s] || p.stats[s] + FOODS[fi].gain[s] * 0.5 <= g.cfg.statMax);
@@ -63,3 +63,28 @@ export const BOTS = {
   greedy: makeGreedy(),
   plain: makeGreedy({ specials: false }),
 };
+
+// 난이도: 반응 시간(초), 망설임(행동을 건너뛸 확률), 황금 고기·고추를 노리는지
+export const DIFFICULTY = {
+  easy: { label: '쉬움', reaction: [0.6, 0.9], slip: 0.3, specials: false },
+  normal: { label: '보통', reaction: [0.4, 0.6], slip: 0.12, specials: true },
+  hard: { label: '어려움', reaction: [0.24, 0.36], slip: 0, specials: true },
+};
+export const LEVELS = Object.keys(DIFFICULTY);
+
+// 매 틱 update(g)를 부르면 반응 시간마다 한 번씩 키를 누른다
+export function createCpu(level, pi = 1, seed = 1) {
+  const d = DIFFICULTY[level];
+  const bot = makeGreedy({ specials: d.specials });
+  const rng = mulberry32(seed);
+  const delay = () => d.reaction[0] + rng() * (d.reaction[1] - d.reaction[0]);
+  let next = delay();
+  return {
+    level,
+    update(g) {
+      if (g.over || g.t < next) return;
+      if (rng() >= d.slip) bot(g, pi);
+      next = g.t + delay();
+    },
+  };
+}
