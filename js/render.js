@@ -249,6 +249,10 @@ export function createRenderer(canvas) {
       if (it && it.state === 'burnt' && Math.random() < dt * 6) {
         spawn({ x: x + (Math.random() - 0.5) * 16, y: y - 6, vx: (Math.random() - 0.5) * 8, vy: -16, life: 1.2, color: '#7a7470', size: 3 });
       }
+      // 거의 다 익었으면(75% 이상) 김이 오른다: 굽기 막대 대신 "곧 익음" 신호
+      if (it && it.state === 'raw' && it.progress / it.cookTime >= 0.75 && Math.random() < dt * 10) {
+        spawn({ x: x + (Math.random() - 0.5) * 22, y: y - 8, vx: (Math.random() - 0.5) * 6, vy: -22, life: 0.8, color: 'rgba(255,255,255,0.8)', size: 3 });
+      }
       if (it && it.golden && it.state !== 'burnt' && Math.random() < dt * 4) {
         spawn({ x: x + (Math.random() - 0.5) * 24, y: y - 4 + (Math.random() - 0.5) * 16, vx: 0, vy: -10, life: 0.5, color: '#fff3a0', size: 1 });
       }
@@ -785,15 +789,8 @@ export function createRenderer(canvas) {
       // 올린 사람
       rect(cx - 25, cy - 22, 7, 7, C.ink);
       rect(cx - 24, cy - 21, 5, 5, C.p[it.owner]);
-      // 진행 바
-      if (it.state !== 'burnt') {
-        const raw = it.state === 'raw';
-        const ratio = raw ? it.progress / it.cookTime : 1 - it.cookedFor / burnAfter;
-        rect(cx - 21, cy + 23, 42, 6, C.ink);
-        rect(cx - 20, cy + 24, 40, 4, '#2a1a12');
-        rect(cx - 20, cy + 24, Math.round(40 * ratio), 4, raw ? C.raw : C.cooked);
-        rect(cx - 20, cy + 24, Math.round(40 * ratio), 1, 'rgba(255,255,255,0.4)');
-      } else {
+      // 굽기 진행 막대는 없다: 음식 색(날것 → 익는 중 → 익음)과 노란 빛 테두리만 보고 판단한다
+      if (it.state === 'burnt') {
         text('탐!', cx, cy + 20, { align: 'center', color: '#ccc' });
       }
     });
