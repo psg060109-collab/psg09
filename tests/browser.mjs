@@ -217,7 +217,7 @@ await check('CPU 수치가 0이 되면 승리 결과 화면, 패배 원인 표�
 });
 
 await check('이기면 난이도별 최단 승리 TOP 5에 이름을 저장하고, 새로고침해도 남아 있다', async () => {
-  await page.waitForTimeout(1300);
+  await until(page, 'B.ui.lock <= 0', 5000);
   assert((await state(page, 'B.ui.entering')) === true);
   for (const k of ['KeyA', 'KeyB', 'Digit7', 'KeyX']) await page.keyboard.press(k);
   await page.keyboard.press('Enter');
@@ -237,7 +237,7 @@ await check('다시 하기(Space)는 수치·접시·불판을 모두 초기화�
     window.__bulpan.game.players[0].stats.carb = 0.001;
   });
   await until(page, "B.screen === 'result'");
-  await page.waitForTimeout(1300);
+  await until(page, 'B.ui.lock <= 0', 5000);
   assert((await state(page, 'B.ui.entering')) === false, '졌는데 랭킹 입력이 뜸');
   await page.keyboard.press('Space');
   await until(page, "B.screen === 'countdown'");
@@ -260,6 +260,21 @@ await check('키 테스트 모드에서 Shift와 함께 여러 키를 동시에 
   for (const k of keys) await page.keyboard.up(k);
   await page.keyboard.press('Escape');
   assert((await state(page, 'B.screen')) === 'title');
+});
+
+await check('승패 연출: 끝나면 약 2초 애니메이션 → 0.8초 전 입력은 무시, 그 뒤 아무 키로 건너뛰면 결과판', async () => {
+  await page.keyboard.press('Space');
+  await until(page, "B.screen === 'play'");
+  await page.evaluate(() => { window.__bulpan.game.players[0].stats.carb = 0.001; });
+  await until(page, "B.screen === 'result'");
+  await page.keyboard.press('Space');
+  assert((await state(page, 'B.screen')) === 'result' && (await state(page, 'B.ui.ready')) === false, '연출 직후 입력에 넘어감');
+  await until(page, 'B.ui.anim > 0.9');
+  assert((await state(page, 'B.ui.ready')) === false, '아직 결과판이 아니어야 함');
+  await page.keyboard.press('KeyX');
+  await until(page, 'B.ui.ready === true', 2000);
+  assert((await state(page, 'B.screen')) === 'result', '건너뛰기가 재시작까지 하면 안 됨');
+  await page.keyboard.press('Escape');
 });
 
 await check('카운트다운 중 ESC, 일시정지 중 BACKSPACE로 타이틀에 돌아간다', async () => {
@@ -286,7 +301,7 @@ await check('둘이 같은 순간 쓰러지면 무승부 화면이 뜨고 랭킹
   });
   await until(page, "B.screen === 'result'");
   assert((await state(page, 'B.game.over.winner')) === -1);
-  await page.waitForTimeout(1300);
+  await until(page, 'B.ui.lock <= 0', 5000);
   assert((await state(page, 'B.ui.entering')) === false);
   await page.keyboard.press('Escape');
 });
@@ -307,7 +322,7 @@ await check('브라우저 저장소가 막혀 있어도 부팅·플레이·결�
   await p.waitForFunction(() => window.__bulpan.screen === 'play');
   await p.evaluate(() => { window.__bulpan.game.players[1].stats.carb = 0.001; });
   await p.waitForFunction(() => window.__bulpan.screen === 'result');
-  await p.waitForTimeout(1300);
+  await p.waitForFunction(() => window.__bulpan.ui.lock <= 0, null, { timeout: 5000 });
   for (const k of ['KeyA', 'KeyB', 'KeyC', 'Enter']) await p.keyboard.press(k);
   const ranked = await p.evaluate(() => window.__bulpan.ranking.normal[0]?.name);
   await ctx.close();
@@ -384,7 +399,7 @@ await check('휴대폰(iPhone 가로): 탭만으로 난이도·시작·올리기
   assert((await st('B.screen')) === 'play', '계속하기');
   await p.evaluate(() => { window.__bulpan.game.players[1].stats.carb = 0.01; });
   await p.waitForFunction(() => window.__bulpan.screen === 'result');
-  await p.waitForTimeout(1400);
+  await p.waitForFunction(() => window.__bulpan.ui.lock <= 0, null, { timeout: 5000 });
   assert((await p.evaluate(() => !document.getElementById('name-form').hidden)) === true, '이름 입력창');
   await p.fill('#name-input', 'kim9');
   await p.click('#name-form button[type=submit]');

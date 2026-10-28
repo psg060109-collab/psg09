@@ -9,6 +9,9 @@ import { buildSprites } from './sprites.js';
 import { DIFFICULTY, LEVELS } from './ai.js';
 import { formatTime } from './ranking.js';
 
+// 승패가 갈린 직후의 짧은 연출 길이(초). 이 동안은 결과 화면 대신 애니메이션
+export const ENDING = 2.2;
+
 export const W = 640;
 export const H = 360;
 
@@ -952,9 +955,225 @@ export function createRenderer(canvas) {
     button(UI.quit, '처음으로', { sub: touch ? null : 'BACKSPACE' });
   }
 
+
+  // ---------- 승리·패배 연출 ----------
+  // 그림은 시간 t만으로 계산한다 (상태를 따로 두지 않아 언제 다시 그려도 같은 장면)
+  const h01 = (k, s = 0) => {
+    let v = (k * 374761393 + s * 668265263) | 0;
+    v = Math.imul(v ^ (v >>> 13), 1274126177);
+    return ((v ^ (v >>> 16)) >>> 0) / 4294967296;
+  };
+
+  // 바깥 테두리를 한 픽셀 두른다
+  function outlineCanvas(c, color) {
+    const t = c.getContext('2d');
+    const img = t.getImageData(0, 0, c.width, c.height);
+    const a = img.data;
+    const filled = (x, y) => x >= 0 && y >= 0 && x < c.width && y < c.height && a[(y * c.width + x) * 4 + 3] > 0;
+    t.fillStyle = color;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        if (!filled(x, y) && (filled(x + 1, y) || filled(x - 1, y) || filled(x, y + 1) || filled(x, y - 1))) t.fillRect(x, y, 1, 1);
+      }
+    }
+    return c;
+  }
+
+  // 도트 트로피 (40×48, 금색 단계 명암)
+  const trophy = (() => {
+    const c = document.createElement('canvas');
+    c.width = 40;
+    c.height = 48;
+    const t = c.getContext('2d');
+    const gold = ['#8a5208', '#c0820e', '#e8aa20', '#ffd24a', '#fff2a8'];
+    const px = (x, y, k) => {
+      t.fillStyle = gold[Math.max(0, Math.min(4, k))];
+      t.fillRect(x, y, 1, 1);
+    };
+    const shadeX = (nx) => (nx < -0.55 ? 3 : nx < -0.25 ? 4 : nx < 0.35 ? 3 : nx < 0.7 ? 2 : 1);
+    // 손잡이 (양쪽 고리)
+    for (let a = 0; a < Math.PI * 2; a += 0.05) {
+      for (const [hx, side] of [[7, -1], [32, 1]]) {
+        const x = Math.round(hx + Math.cos(a) * 5);
+        const y = Math.round(11 + Math.sin(a) * 6);
+        if (side * (x - hx) >= -1) px(x, y, side < 0 ? 3 : 1);
+      }
+    }
+    // 컵 (아래로 둥글게 좁아짐)
+    for (let y = 3; y <= 24; y++) {
+      const k = (y - 3) / 21;
+      const w = Math.round(15 - k * k * 10);
+      for (let x = -w; x <= w; x++) px(20 + x, y, shadeX(x / w) - (y > 21 ? 1 : 0));
+    }
+    for (let x = -16; x <= 16; x++) px(20 + x, 2, x < 0 ? 4 : 3);
+    for (let x = -14; x <= 14; x++) px(20 + x, 4, 1);
+    // 기둥 · 장식 · 받침
+    for (let y = 25; y <= 32; y++) for (let x = -2; x <= 2; x++) px(20 + x, y, shadeX(x / 2.5));
+    for (let x = -5; x <= 5; x++) px(20 + x, 32, shadeX(x / 6));
+    for (let y = 36; y <= 41; y++) for (let x = -10; x <= 10; x++) px(20 + x, y, shadeX(x / 11) - (y === 41 ? 1 : 0));
+    for (let y = 33; y <= 35; y++) for (let x = -7; x <= 7; x++) px(20 + x, y, shadeX(x / 8));
+    // 컵 가운데 별
+    t.fillStyle = '#fffbe0';
+    for (const [x, y] of [[20, 9], [19, 10], [20, 10], [21, 10], [17, 11], [18, 11], [19, 11], [20, 11], [21, 11], [22, 11], [23, 11], [18, 12], [19, 12], [20, 12], [21, 12], [22, 12], [18, 13], [19, 13], [21, 13], [22, 13], [17, 14], [23, 14]]) t.fillRect(x, y, 1, 1);
+    // 반짝임
+    t.fillStyle = '#ffffff';
+    for (const [x, y] of [[9, 6], [9, 7], [10, 8], [10, 9], [11, 10]]) t.fillRect(x, y, 1, 1);
+    return outlineCanvas(c, '#3a2204');
+  })();
+
+  const CONFETTI = ['#ff5a5a', '#ffd24a', '#7fd65a', '#4f95ff', '#ffffff', '#f08aa0', '#ff9a2a'];
+
+  function drawConfetti(t, n = 70) {
+    for (let k = 0; k < n; k++) {
+      const delay = h01(k, 1) * 0.6;
+      if (t < delay) continue;
+      const tt = t - delay;
+      const x = h01(k, 2) * W + Math.sin(tt * (2 + h01(k, 3) * 3) + k) * 8;
+      const y = -8 + tt * (90 + h01(k, 4) * 120);
+      if (y > H) continue;
+      const flip = Math.floor(tt * 10 + k) % 2 === 0;
+      rect(x, y, flip ? 3 : 1, flip ? 2 : 3, CONFETTI[k % CONFETTI.length]);
+    }
+  }
+
+  function drawFireworks(t, count = 6) {
+    for (let i = 0; i < count; i++) {
+      const t0 = 0.15 + i * 0.3;
+      const age = t - t0;
+      if (age < 0 || age > 0.9) continue;
+      const cx = 90 + h01(i, 5) * 460;
+      const cy = 50 + h01(i, 6) * 130;
+      const col = CONFETTI[(i * 3) % CONFETTI.length];
+      const r = Math.round(age * 70);
+      ctx.globalAlpha = Math.max(0, 1 - age / 0.9);
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const x = cx + Math.cos(a) * r;
+        const y = cy + Math.sin(a) * r + age * age * 30;
+        rect(x, y, 2, 2, col);
+        rect(x - Math.cos(a) * 4, y - Math.sin(a) * 4, 1, 1, '#fff');
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 큰 글자가 위에서 떨어져 출렁 (0 → 목표 위치, 살짝 튕김)
+  function dropY(t, y0, y1, dur = 0.45) {
+    if (t >= dur) return y1 + Math.round(Math.sin((t - dur) * 3) * 2);
+    const k = t / dur;
+    const bounce = k < 0.75 ? (k / 0.75) ** 2 : 1 - Math.sin(((k - 0.75) / 0.25) * Math.PI) * 0.08;
+    return y0 + (y1 - y0) * bounce;
+  }
+
+  function drawWin(t) {
+    ctx.fillStyle = `rgba(255,200,80,${Math.min(0.25, t * 0.4)})`;
+    ctx.fillRect(0, 0, W, H);
+    dim(Math.min(0.62, t * 1.2));
+    drawFireworks(t);
+    // 빛줄기
+    ctx.globalAlpha = 0.18;
+    for (let k = 0; k < 12; k++) {
+      const a = t * 0.8 + (k / 12) * Math.PI * 2;
+      for (let r = 60; r < 260; r += 6) rect(320 + Math.cos(a) * r, 214 + Math.sin(a) * r * 0.8, 3, 3, '#ffe68a');
+    }
+    ctx.globalAlpha = 1;
+    // 트로피: 아래에서 튀어 오른다
+    const rise = Math.min(1, t / 0.55);
+    const ty = 440 - (440 - 214) * (1 - (1 - rise) ** 3) + (t > 0.55 ? Math.round(Math.sin((t - 0.55) * 5) * 3) : 0);
+    ctx.drawImage(trophy, 320 - 60, ty - 72, 120, 144);
+    for (let k = 0; k < 6; k++) {
+      const a = t * 3 + k;
+      if (Math.sin(t * 9 + k * 2) > 0.3) {
+        const sx = 320 + Math.cos(a) * 80;
+        const sy = ty + Math.sin(a) * 60;
+        rect(sx, sy - 2, 1, 5, '#fff');
+        rect(sx - 2, sy, 5, 1, '#fff');
+      }
+    }
+    text('승리!', 320, dropY(t, -60, 40), { size: 48, align: 'center', color: blink(6) ? '#ffe14a' : '#ffffff', shadow: '#5a1a08' });
+    drawConfetti(t);
+  }
+
+  function drawLose(g, t) {
+    // 푸르게 어두워짐 + 비
+    ctx.fillStyle = `rgba(14,20,44,${Math.min(0.78, t * 1.2)})`;
+    ctx.fillRect(0, 0, W, H);
+    for (let k = 0; k < 60; k++) {
+      const x = (h01(k, 7) * W + t * 40) % W;
+      const y = (h01(k, 8) * H + t * (220 + h01(k, 9) * 80)) % H;
+      rect(x, y, 1, 5, 'rgba(150,170,210,0.7)');
+    }
+    // 빈 공깃밥 그릇이 흔들린다
+    const wob = t < 1.2 ? Math.round(Math.sin(t * 22) * 3 * (1 - t / 1.2)) : 0;
+    const bx = 320 + wob;
+    const by = 196;
+    ellipse(bx + 4, by + 6, 46, 44, 'rgba(0,0,0,0.4)');
+    disc(bx, by, 46, C.ink);
+    disc(bx, by, 45, '#c4ccd8');
+    disc(bx, by, 41, '#8a94a2');
+    disc(bx, by, 37, '#5e6874');
+    disc(bx, by, 33, '#4a525e');
+    rect(bx - 30, by - 32, 10, 2, '#f4f8fc');
+    rect(bx - 34, by - 28, 3, 6, '#f4f8fc');
+    // 그릇에 남은 밥알 두 개
+    rect(bx + 8, by + 10, 3, 2, '#f2eee4');
+    rect(bx - 12, by + 4, 2, 2, '#f2eee4');
+    // 식은땀
+    if (t > 0.5) {
+      const dy = ((t - 0.5) * 40) % 30;
+      for (const [sx, s] of [[bx + 48, 0], [bx - 52, 12]]) {
+        const yy = by - 30 + ((dy + s) % 30);
+        rect(sx, yy, 2, 3, '#9fd0ec');
+        rect(sx - 1, yy + 3, 4, 3, '#9fd0ec');
+        rect(sx, yy + 3, 1, 1, '#ffffff');
+      }
+    }
+    // 꼬르륵~ (글자마다 물결)
+    const word = '꼬르륵~';
+    [...word].forEach((ch, i) => {
+      const y = 116 + Math.round(Math.sin(t * 7 - i * 0.9) * 4);
+      if (t > 0.3 + i * 0.12) text(ch, 284 + i * 22, y, { size: 24, color: '#c9d6f0', shadow: '#1a2440' });
+    });
+    // 바닥난 수치 아이콘 + 빨간 X 도장
+    const cause = g.over.cause[0];
+    if (cause) {
+      const icon = { protein: sprites.icon.meat, carb: sprites.icon.rice, vitamin: sprites.icon.lettuce }[cause];
+      art(icon, 320, 286, 2);
+      if (t > 0.9) {
+        const k = Math.min(1, (t - 0.9) / 0.15);
+        const s = Math.round(30 - k * 10);
+        for (let d = -s; d <= s; d++) {
+          rect(320 + d - 2, 286 + d - 2, 5, 5, '#e8262e');
+          rect(320 + d - 2, 286 - d - 2, 5, 5, '#e8262e');
+        }
+        text(`${STAT_LABEL[cause]} 부족!`, 320, 316, { align: 'center', color: '#ff8a7a', shadow: '#3a0a0a' });
+      }
+    }
+    text('패배...', 320, dropY(t, -60, 30, 0.7), { size: 48, align: 'center', color: '#8fb4ff', shadow: '#0e1630' });
+  }
+
+  function drawDraw(t) {
+    dim(Math.min(0.65, t * 1.2));
+    drawFireworks(t, 3);
+    drawConfetti(t, 30);
+    text('무승부!', 320, dropY(t, -60, 130), { size: 48, align: 'center', color: C.warn, shadow: '#5a1a08' });
+    text('둘 다 쓰러졌다', 320, 190, { align: 'center', color: C.text });
+  }
+
+  function drawEnding(g, t) {
+    drawGame(g);
+    if (g.over.winner === 0) drawWin(t);
+    else if (g.over.winner === 1) drawLose(g, t);
+    else drawDraw(t);
+    if (t > 0.8) text(touch ? '탭해서 건너뛰기' : '아무 키나 눌러 건너뛰기', 632, 346, { align: 'right', color: 'rgba(255,255,255,0.6)', shadow: null });
+  }
+
   function drawResult(g, ui) {
+    if (ui.anim < ENDING) return drawEnding(g, ui.anim);
     drawGame(g);
     dim(0.72);
+    // 연출 뒤 결과판이 짧게 페이드인
+    ctx.globalAlpha = Math.min(1, (ui.anim - ENDING) / 0.25);
     const o = g.over;
     box(120, 24, 400, 312, '#2a1b11', C.ink);
     const title = o.winner === -1 ? ['무승부!', C.warn] : o.winner === 0 ? ['승리!', C.gold] : ['패배...', C.p[1]];
@@ -995,6 +1214,7 @@ export function createRenderer(canvas) {
       button(UI.retry, '다시 하기', { on: blink(2), sub: touch ? null : 'SPACE' });
       button(UI.toTitle, '타이틀로', { sub: touch ? null : 'ESC' });
     }
+    ctx.globalAlpha = 1;
   }
 
   function drawKeyTest(held) {

@@ -2,12 +2,12 @@ import { CONFIG } from './config.js';
 import { createGame, step, pressFood, pressSlot } from './game.js';
 import { createCpu, DIFFICULTY, LEVELS } from './ai.js';
 import { attachInput } from './input.js';
-import { createRenderer, hitTest, W, H } from './render.js';
+import { createRenderer, hitTest, ENDING, W, H } from './render.js';
 import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js';
 
 const canvas = document.getElementById('game');
 const STEP = 1 / CONFIG.tickRate;
-const RESULT_LOCK = 1.2; // 끝난 직후 연타로 바로 재시작되는 것 방지
+const SKIP_AFTER = 0.8; // 승패 연출은 이 시간이 지나면 건너뛸 수 있다 (그 전 입력은 무시: 연타로 넘어가는 것 방지)
 const LEVEL_KEY = 'bulpan-level';
 
 let screen = 'title'; // title | help | keytest | countdown | play | pause | result
@@ -16,7 +16,7 @@ let cpu = null;
 let countdown = 0;
 let ranking = loadRanking(LEVELS);
 let level = loadLevel();
-const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0, cpuPaused: false };
+const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0, anim: 0, cpuPaused: false };
 
 let renderer;
 let input;
@@ -76,7 +76,8 @@ function startMatch() {
 
 function finishMatch() {
   screen = 'result';
-  ui.lock = RESULT_LOCK;
+  ui.anim = 0;
+  ui.lock = ENDING;
   ui.ready = false;
   ui.rank = 0;
   ui.name = '';
@@ -158,6 +159,7 @@ function onKey(code, action) {
       else if (code === 'Backspace') screen = 'title';
       break;
     case 'result':
+      if (skipEnding()) return;
       if (ui.lock > 0) return;
       if (ui.entering) {
         const ch = /^Key([A-Z])$/.exec(code)?.[1] || /^Digit(\d)$/.exec(code)?.[1];
@@ -178,8 +180,19 @@ function onKey(code, action) {
   }
 }
 
+// 승패 연출 중 입력: SKIP_AFTER가 지났으면 연출을 끝내고 결과판으로. 입력을 썼으면 true
+function skipEnding() {
+  if (screen !== 'result' || ui.anim >= ENDING) return false;
+  if (ui.anim >= SKIP_AFTER) {
+    ui.anim = ENDING;
+    ui.lock = Math.min(ui.lock, 0.25);
+  }
+  return true;
+}
+
 // 탭·클릭: 화면마다 누른 곳의 동작을 키 입력과 똑같이 처리한다
 function onTap(x, y) {
+  if (skipEnding()) return;
   const hit = hitTest(screen, x, y, { game, level, ui });
   if (!hit) return;
   switch (hit.type) {
@@ -222,6 +235,7 @@ function update(dt) {
     if (!ui.cpuPaused) cpu.update(game);
     if (game.over) finishMatch();
   } else if (screen === 'result') {
+    ui.anim += dt;
     if (ui.lock > 0) {
       ui.lock -= dt;
       if (ui.lock <= 0 && !ui.entering) ui.ready = true;
