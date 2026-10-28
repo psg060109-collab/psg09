@@ -28,6 +28,8 @@ export const GAME_CODES = [...new Set([...KEYMAP.foods, ...KEYMAP.slots])];
 export function attachInput(target, onKey) {
   const held = new Set();
   target.addEventListener('keydown', (e) => {
+    // 이름 입력창에 글자를 칠 때는 게임 키로 쓰지 않는다
+    if (e.target && e.target.tagName === 'INPUT') return;
     const action = lookup(e.code, e.shiftKey);
     if (action || GAME_CODES.includes(e.code) || ['Space', 'Escape', 'Tab', 'Backspace', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     held.add(e.code);

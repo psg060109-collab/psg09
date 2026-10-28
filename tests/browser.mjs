@@ -342,6 +342,76 @@ await check('통째 플레이: 상태를 건드리지 않고 부팅→시작→C
   assert(r.cpuAte > 10, `CPU가 먹은 수 ${r.cpuAte}`);
 });
 
+await check('휴대폰(iPhone 가로): 탭만으로 난이도·시작·올리기·먹기·일시정지·이름 저장·다시 하기, 세로면 회전 안내', async () => {
+  const { devices } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+  const ctx = await browser.newContext({ ...devices['iPhone 13 landscape'] });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(String(e)));
+  p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+  await p.goto(URL_);
+  await p.waitForFunction(() => window.__bulpan);
+  const tap = async (x, y) => {
+    const r = await p.evaluate(() => {
+      const b = document.getElementById('game').getBoundingClientRect();
+      return [b.left, b.top, b.width, b.height];
+    });
+    await p.touchscreen.tap(r[0] + (x * r[2]) / 640, r[1] + (y * r[3]) / 360);
+    await p.waitForTimeout(60);
+  };
+  const st = (e) => state(p, e);
+  assert((await st('B.touch')) === true, '터치 모드가 아님');
+  const [cw, , vw, vh] = await p.evaluate(() => {
+    const r = document.getElementById('game').getBoundingClientRect();
+    return [r.width, r.height, innerWidth, innerHeight];
+  });
+  assert(cw > vw * 0.75 || cw >= (vh * 640) / 360 - 2, `화면을 덜 채움 ${cw}/${vw}`);
+  await tap(320, 244);
+  assert((await st('B.level')) === 'normal', '난이도 탭');
+  await tap(320, 320);
+  await p.waitForFunction(() => window.__bulpan.screen === 'play');
+  await p.evaluate(() => { window.__bulpan.ui.cpuPaused = true; });
+  await tap(284, 86);
+  assert((await st('B.game.grill[0]?.food')) === 1, '고기 접시 탭 → 불판');
+  await tap(212, 86);
+  assert((await st('B.game.players[0].eaten.rice')) === 1, '밥 접시 탭 → 먹기');
+  await p.waitForFunction(() => window.__bulpan.game.grill[0]?.state === 'cooked', null, { timeout: 8000 });
+  await tap(215, 164);
+  assert((await st('B.game.players[0].eaten.meat')) === 1, '익은 고기 탭 → 먹기');
+  await tap(320, 18);
+  assert((await st('B.screen')) === 'pause', '타이머 탭 → 일시정지');
+  await tap(244, 212);
+  assert((await st('B.screen')) === 'play', '계속하기');
+  await p.evaluate(() => { window.__bulpan.game.players[1].stats.carb = 0.01; });
+  await p.waitForFunction(() => window.__bulpan.screen === 'result');
+  await p.waitForTimeout(1400);
+  assert((await p.evaluate(() => !document.getElementById('name-form').hidden)) === true, '이름 입력창');
+  await p.fill('#name-input', 'kim9');
+  await p.click('#name-form button[type=submit]');
+  assert((await st('B.ranking.normal[0]?.name')) === 'KIM', '이름 저장');
+  await tap(244, 280);
+  assert((await st('B.screen')) === 'countdown', '다시 하기');
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.waitForTimeout(150);
+  const rotate = await p.evaluate(() => getComputedStyle(document.getElementById('rotate')).display);
+  await ctx.close();
+  assert(rotate === 'flex', '세로 안내');
+  assert(errs.length === 0, errs.join('\n'));
+});
+
+await check('PC에서 키를 누르면 키보드 안내로 돌아오고, 마우스 클릭으로도 메뉴를 고를 수 있다', async () => {
+  const p = await openPage(1366, 768);
+  assert((await state(p, 'B.touch')) === false);
+  const r = await p.evaluate(() => {
+    const b = document.getElementById('game').getBoundingClientRect();
+    return [b.left, b.top, b.width, b.height];
+  });
+  await p.mouse.click(r[0] + (320 * r[2]) / 640, r[1] + (344 * r[3]) / 360);
+  assert((await state(p, 'B.screen')) === 'help', '클릭 → 도움말');
+  assert((await state(p, 'B.touch')) === false, '마우스는 터치 모드가 아님');
+  await p.close();
+});
+
 await check('폰트가 실제로 로드된다', async () => {
   assert((await page.evaluate(() => document.fonts.check('12px Galmuri'))) === true);
 });

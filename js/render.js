@@ -42,6 +42,52 @@ const SLOT_Y = [164, 241];
 const SEAT_X = [12, 472];
 const SEAT_W = 156;
 
+// 터치·클릭 버튼 영역 (그리기와 판정이 같은 값을 쓴다)
+const UI = {
+  level: (n) => ({ x: 170 + n * 102, y: 232, w: 96, h: 24 }),
+  start: { x: 196, y: 304, w: 248, h: 34 },
+  help: { x: 232, y: 340, w: 176, h: 18 },
+  pause: { x: 270, y: 4, w: 100, h: 30 },
+  resume: { x: 176, y: 196, w: 136, h: 34 },
+  quit: { x: 328, y: 196, w: 136, h: 34 },
+  retry: { x: 176, y: 266, w: 136, h: 30 },
+  toTitle: { x: 328, y: 266, w: 136, h: 30 },
+};
+const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+
+// 화면 좌표(논리 640×360)에서 무엇을 눌렀는지
+export function hitTest(screen, x, y, { game, level, ui } = {}) {
+  switch (screen) {
+    case 'title':
+      for (let n = 0; n < LEVELS.length; n++) if (inside(UI.level(n), x, y)) return { type: 'level', level: LEVELS[n] };
+      if (inside(UI.start, x, y)) return { type: 'start' };
+      if (inside(UI.help, x, y)) return { type: 'help' };
+      return null;
+    case 'help':
+    case 'keytest':
+      return { type: 'back' };
+    case 'play': {
+      if (inside(UI.pause, x, y)) return { type: 'pause' };
+      for (let i = 0; i < PLATE_X.length; i++) if (Math.hypot(x - PLATE_X[i], y - PLATE_Y) <= 34) return { type: 'plate', index: i };
+      for (let i = 0; i < CONFIG.grillSlots; i++) {
+        const cx = SLOT_X[i % 4];
+        const cy = SLOT_Y[i < 4 ? 0 : 1];
+        if (Math.abs(x - cx) <= 34 && y >= cy - 34 && y < cy + 40) return game && game.grill[i] ? { type: 'slot', index: i } : null;
+      }
+      return null;
+    }
+    case 'pause':
+      if (inside(UI.quit, x, y)) return { type: 'title' };
+      return { type: 'resume' };
+    case 'result':
+      if (!ui || !ui.ready) return null;
+      if (inside(UI.toTitle, x, y)) return { type: 'title' };
+      if (inside(UI.retry, x, y)) return { type: 'retry' };
+      return null;
+  }
+  return null;
+}
+
 const MAX_PARTICLES = 80;
 const MAX_FLOATERS = 24;
 
@@ -54,6 +100,20 @@ export function createRenderer(canvas) {
   let labels = ['나', 'CPU'];
   function setLabels(l) {
     labels = l;
+  }
+  // 터치 모드면 키 안내 대신 '탭' 안내를 보여 준다
+  let touch = false;
+  function setTouch(v) {
+    touch = v;
+  }
+
+  // 누를 수 있는 버튼
+  function button(r, label, { on = false, sub = null } = {}) {
+    box(r.x, r.y, r.w, r.h, on ? '#a0420e' : '#3a2a20', on ? '#ffcf3a' : C.ink);
+    rect(r.x + 2, r.y + 1, r.w - 4, 1, 'rgba(255,255,255,0.2)');
+    const ty = r.y + Math.round((r.h - (sub ? 26 : 14)) / 2);
+    text(label, r.x + r.w / 2, ty, { align: 'center', color: on ? '#fff' : C.text });
+    if (sub) text(sub, r.x + r.w / 2, ty + 13, { align: 'center', color: C.dim });
   }
 
   const fx = {
@@ -524,6 +584,10 @@ export function createRenderer(canvas) {
     box(270, 4, 100, 30, '#24160e', C.ink);
     rect(272, 6, 96, 1, 'rgba(255,255,255,0.12)');
     text(formatTime(g.t), 320, 7, { size: 24, align: 'center' });
+    if (touch) {
+      rect(358, 12, 2, 8, C.dim);
+      rect(362, 12, 2, 8, C.dim);
+    }
     const late = g.t > CONFIG.rampStart;
     box(262, 338, 116, 18, 'rgba(20,10,6,0.7)', 'rgba(0,0,0,0.7)');
     text(`배고픔 ${decayRate(g.t).toFixed(1)}/초`, 320, 341, { align: 'center', color: late ? C.danger : C.dim });
@@ -554,10 +618,14 @@ export function createRenderer(canvas) {
       const pl = g.plates[i];
       // 이름표: [키] 이름
       rect(cx - 26, 36, 52, 16, 'rgba(20,10,6,0.75)');
-      const nameW = glyph(food.name, 12, C.text).width - 2;
-      const left = Math.round(cx - (14 + 4 + nameW) / 2);
-      keyChip(left + 7, 37, KEYMAP.foods[i], 0);
-      text(food.name, left + 18, 38, { color: C.text });
+      if (touch) {
+        text(food.name, cx, 38, { align: 'center', color: C.text });
+      } else {
+        const nameW = glyph(food.name, 12, C.text).width - 2;
+        const left = Math.round(cx - (14 + 4 + nameW) / 2);
+        keyChip(left + 7, 37, KEYMAP.foods[i], 0);
+        text(food.name, left + 18, 38, { color: C.text });
+      }
       // 접시: 그림자 → 테두리 → 안쪽 → 하이라이트
       ellipse(cx + 3, cy + 4, 30, 29, 'rgba(0,0,0,0.35)');
       disc(cx, cy, 30, C.ink);
@@ -711,8 +779,8 @@ export function createRenderer(canvas) {
         text('탐!', cx, cy + 20, { align: 'center', color: '#ccc' });
       }
     });
-    // 칸마다 먹기 키 (Shift + 키). 지금 먹을 수 있는 칸만 밝게
-    for (let i = 0; i < CONFIG.grillSlots; i++) {
+    // 칸마다 먹기 키 (Shift + 키). 지금 먹을 수 있는 칸만 밝게. 터치 모드는 빛 테두리로 충분해서 생략
+    for (let i = 0; i < CONFIG.grillSlots && !touch; i++) {
       const [cx, cy] = slotCenter(i);
       const it = g.grill[i];
       const ready = !!it && it.state === 'cooked';
@@ -778,8 +846,8 @@ export function createRenderer(canvas) {
 
     // 3단계 안내 카드
     const cards = [
-      ['1  접시 키', '고기·버섯은 불판으로'],
-      ['2  먹기', '노랗게 빛나면 Shift+키'],
+      [touch ? '1  접시 탭' : '1  접시 키', '고기·버섯은 불판으로'],
+      ['2  먹기', touch ? '노랗게 빛나면 탭' : '노랗게 빛나면 Shift+키'],
       ['3  버티기', '셋 중 하나라도 0이면 패배'],
     ];
     cards.forEach(([head, line], k) => {
@@ -789,15 +857,22 @@ export function createRenderer(canvas) {
       text(head, x + 92, y + 6, { align: 'center', color: C.warn });
       if (k === 0) {
         KEYMAP.foods.forEach((code, n) => {
-          bigKey(x + 16 + n * 40, y + 30, keyLabel(code));
-          art(sprites.icon.plateFood[n], x + 27 + n * 40, y + 66);
+          if (touch) art(sprites.icon.plateFood[n], x + 27 + n * 40, y + 50);
+          else {
+            bigKey(x + 16 + n * 40, y + 30, keyLabel(code));
+            art(sprites.icon.plateFood[n], x + 27 + n * 40, y + 66);
+          }
         });
       } else if (k === 1) {
         glow(sprites.meat.cooked, x + 46, y + 52, C.cooked, 2);
         art(sprites.meat.cooked, x + 46, y + 52);
-        bigKey(x + 92, y + 40, 'Shift', 44, '#ffc81e', '#3a2200');
-        text('+', x + 141, y + 43, { align: 'center' });
-        bigKey(x + 150, y + 40, 'Q');
+        if (touch) {
+          bigKey(x + 104, y + 40, '탭!', 52, '#ffc81e', '#3a2200');
+        } else {
+          bigKey(x + 92, y + 40, 'Shift', 44, '#ffc81e', '#3a2200');
+          text('+', x + 141, y + 43, { align: 'center' });
+          bigKey(x + 150, y + 40, 'Q');
+        }
       } else {
         const icons = [sprites.icon.meat, sprites.icon.rice, sprites.icon.lettuce];
         const vals = [70, 45, 12];
@@ -814,13 +889,15 @@ export function createRenderer(canvas) {
     // 난이도
     text('상대 CPU', 320, 216, { align: 'center', color: C.dim });
     LEVELS.forEach((lv, n) => {
-      const x = 170 + n * 102;
+      const r = UI.level(n);
       const on = lv === level;
-      box(x, 232, 96, 24, on ? C.pDark[1] : '#3a2a20', on ? '#fff' : C.ink);
-      text(`${n + 1} ${DIFFICULTY[lv].label}`, x + 48, 238, { align: 'center', color: on ? '#fff' : C.dim });
+      box(r.x, r.y, r.w, r.h, on ? C.pDark[1] : '#3a2a20', on ? '#fff' : C.ink);
+      text(touch ? DIFFICULTY[lv].label : `${n + 1} ${DIFFICULTY[lv].label}`, r.x + 48, r.y + 6, { align: 'center', color: on ? '#fff' : C.dim });
     });
-    text('←', 154, 238, { align: 'center', color: C.dim });
-    text('→', 486, 238, { align: 'center', color: C.dim });
+    if (!touch) {
+      text('←', 154, 238, { align: 'center', color: C.dim });
+      text('→', 486, 238, { align: 'center', color: C.dim });
+    }
 
     // 최단 승리 1~3위 (한 줄씩 짧게)
     const top = ranking.slice(0, 3);
@@ -829,8 +906,9 @@ export function createRenderer(canvas) {
     top.forEach((r, n) => text(`${n + 1}위 ${r.name}  ${formatTime(r.time)}`, 320, 280 + n * 12, { align: 'center', color: n === 0 ? C.warn : C.text }));
 
     // 안내는 사라지지 않고 색만 바뀐다 (잠깐 봐도 다음에 누를 키가 보이게)
-    text('SPACE 로 시작', 320, 318, { size: 24, align: 'center', color: blink(2) ? '#fff' : C.warn, shadow: '#5a1a08' });
-    text('H 자세한 규칙   ·   T 키 테스트', 320, 346, { align: 'center', color: C.dim });
+    if (touch) box(UI.start.x, UI.start.y, UI.start.w, UI.start.h, '#a0420e', '#ffcf3a');
+    text(touch ? '탭해서 시작' : 'SPACE 로 시작', 320, 309, { size: 24, align: 'center', color: blink(2) ? '#fff' : C.warn, shadow: '#5a1a08' });
+    text(touch ? '자세한 규칙 보기' : 'H 자세한 규칙   ·   T 키 테스트', 320, 344, { align: 'center', color: C.dim });
   }
 
   // 자세한 규칙 (타이틀에서 H)
@@ -839,9 +917,9 @@ export function createRenderer(canvas) {
     dim(0.6);
     text('자세한 규칙', 320, 14, { size: 24, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
     const rows = [
-      ['밥(Q)·상추(R)', '누르면 바로 먹는다. 탄수화물·비타민', C.text],
-      ['고기(W)·버섯(E)', '불판에 올린다. 익으면 Shift+칸 키로 먹기', C.text],
-      ['불판 칸 키', '윗줄 Shift+Q W E R, 아랫줄 Shift+U I O P', C.cooked],
+      [touch ? '밥·상추 접시' : '밥(Q)·상추(R)', '누르면 바로 먹는다. 탄수화물·비타민', C.text],
+      [touch ? '고기·버섯 접시' : '고기(W)·버섯(E)', touch ? '불판에 올린다. 노랗게 빛나면 음식을 탭' : '불판에 올린다. 익으면 Shift+칸 키로 먹기', C.text],
+      [touch ? '불판 음식 탭' : '불판 칸 키', touch ? '빛나는 음식을 직접 탭해서 먹기' : '윗줄 Shift+Q W E R, 아랫줄 Shift+U I O P', C.cooked],
       ['PERFECT', `익자마자(${CONFIG.perfectWindow}초 안) 먹으면 영양 x${CONFIG.perfectMul}`, C.warn],
       ['황금 고기', `가끔 고기 접시에 등장. 세 수치 모두 +${CONFIG.golden.gain}`, C.gold],
       ['청양고추', `상추 접시에 등장. 먹으면 CPU가 ${CONFIG.chili.stun}초 못 먹음`, C.danger],
@@ -857,7 +935,7 @@ export function createRenderer(canvas) {
       text(body, 184, y, { color: C.text });
       if (n < rows.length - 1) rect(60, y + 19, 520, 1, 'rgba(255,255,255,0.08)');
     });
-    text('ESC 돌아가기', 320, 334, { align: 'center', color: C.dim });
+    text(touch ? '탭해서 돌아가기' : 'ESC 돌아가기', 320, 334, { align: 'center', color: C.dim });
   }
 
   function drawCountdown(g, n) {
@@ -870,7 +948,8 @@ export function createRenderer(canvas) {
     drawGame(g);
     dim(0.7);
     text('일시정지', 320, 130, { size: 36, align: 'center' });
-    text('ESC 계속하기   ·   BACKSPACE 처음으로', 320, 186, { align: 'center', color: C.dim });
+    button(UI.resume, '계속하기', { on: true, sub: touch ? null : 'ESC' });
+    button(UI.quit, '처음으로', { sub: touch ? null : 'BACKSPACE' });
   }
 
   function drawResult(g, ui) {
@@ -905,13 +984,16 @@ export function createRenderer(canvas) {
     if (ui.entering) {
       box(170, 236, 300, 64, C.pDark[0], C.ink);
       text('최단 승리 TOP 5 진입! 이름 (영문·숫자 3자)', 320, 240, { align: 'center', color: C.warn });
-      const slots = [0, 1, 2].map((k) => ui.name[k] || (k === ui.name.length && blink(3) ? '_' : ' '));
-      text(slots.join(' '), 320, 255, { size: 24, align: 'center' });
-      text('ENTER 저장  ESC 건너뛰기', 320, 284, { align: 'center', color: C.dim });
+      // 터치 모드는 진짜 입력창(휴대폰 키보드)이 이 자리에 뜬다
+      if (!touch) {
+        const slots = [0, 1, 2].map((k) => ui.name[k] || (k === ui.name.length && blink(3) ? '_' : ' '));
+        text(slots.join(' '), 320, 255, { size: 24, align: 'center' });
+      }
+      if (!touch) text('ENTER 저장  ESC 건너뛰기', 320, 284, { align: 'center', color: C.dim });
     } else if (ui.ready) {
-      if (ui.rank) text(`${ui.rank}위로 기록되었습니다!`, 320, 250, { align: 'center', color: C.warn });
-      text('SPACE 다시 하기', 320, 276, { align: 'center', color: blink(2) ? '#fff' : C.warn });
-      text('ESC 타이틀로', 320, 296, { align: 'center', color: C.dim });
+      if (ui.rank) text(`${ui.rank}위로 기록되었습니다!`, 320, 246, { align: 'center', color: C.warn });
+      button(UI.retry, '다시 하기', { on: blink(2), sub: touch ? null : 'SPACE' });
+      button(UI.toTitle, '타이틀로', { sub: touch ? null : 'ESC' });
     }
   }
 
@@ -941,5 +1023,5 @@ export function createRenderer(canvas) {
     text('ESC 돌아가기', 320, 330, { align: 'center', color: C.dim });
   }
 
-  return { ctx, sprites, fx, setLabels, consume, update, reset, drawTitle, drawHelp, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
+  return { ctx, sprites, fx, setLabels, setTouch, consume, update, reset, drawTitle, drawHelp, drawCountdown, drawGame, drawPause, drawResult, drawKeyTest };
 }

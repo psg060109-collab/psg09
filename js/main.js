@@ -2,7 +2,7 @@ import { CONFIG } from './config.js';
 import { createGame, step, pressFood, pressSlot } from './game.js';
 import { createCpu, DIFFICULTY, LEVELS } from './ai.js';
 import { attachInput } from './input.js';
-import { createRenderer, W, H } from './render.js';
+import { createRenderer, hitTest, W, H } from './render.js';
 import { loadRanking, saveRanking, qualifies, insertRanking } from './ranking.js';
 
 const canvas = document.getElementById('game');
@@ -20,6 +20,23 @@ const ui = { entering: false, name: '', ready: false, rank: 0, lock: 0, cpuPause
 
 let renderer;
 let input;
+let touchMode = false;
+
+function setTouchMode(v) {
+  if (touchMode === v) return;
+  touchMode = v;
+  renderer.setTouch(v);
+  syncNameForm();
+}
+
+// 휴대폰에서는 시작할 때 전체 화면 + 가로 고정을 시도한다 (안 되는 브라우저는 조용히 넘어감)
+function goFullscreen() {
+  const el = document.documentElement;
+  Promise.resolve()
+    .then(() => (document.fullscreenElement || !el.requestFullscreen ? null : el.requestFullscreen()))
+    .then(() => screen.orientation?.lock?.('landscape'))
+    .catch(() => {});
+}
 
 function loadLevel() {
   try {
@@ -39,9 +56,10 @@ function setLevel(v) {
   }
 }
 
+// 큰 화면은 정수배로 또렷하게, 휴대폰처럼 작은 화면은 꽉 차게
 function fit() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
-  const scale = s >= 1 ? Math.floor(s) : s;
+  const scale = s >= 2 ? Math.floor(s) : s;
   canvas.style.width = `${W * scale}px`;
   canvas.style.height = `${H * scale}px`;
 }
@@ -65,6 +83,37 @@ function finishMatch() {
   ui.entering = game.over.winner === 0 && qualifies(ranking[level], game.over.time);
 }
 
+// 터치 모드의 이름 입력: 휴대폰 키보드가 뜨는 진짜 입력창
+const nameForm = document.getElementById('name-form');
+const nameInput = document.getElementById('name-input');
+
+function syncNameForm() {
+  const show = touchMode && screen === 'result' && ui.entering && ui.lock <= 0;
+  if (nameForm.hidden === !show) return;
+  nameForm.hidden = !show;
+  if (show) {
+    nameInput.value = '';
+    nameInput.focus();
+  }
+}
+
+nameForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = nameInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+  if (!v) return;
+  ui.name = v;
+  saveName();
+  ui.ready = true;
+  nameInput.blur();
+  syncNameForm();
+});
+document.getElementById('name-skip').addEventListener('click', () => {
+  ui.entering = false;
+  ui.ready = true;
+  nameInput.blur();
+  syncNameForm();
+});
+
 function saveName() {
   const entry = { name: ui.name || '???', time: game.over.time, date: Date.now() };
   ranking = { ...ranking, [level]: insertRanking(ranking[level], entry) };
@@ -74,6 +123,7 @@ function saveName() {
 }
 
 function onKey(code, action) {
+  setTouchMode(false);
   switch (screen) {
     case 'title': {
       const i = LEVELS.indexOf(level);
@@ -128,6 +178,41 @@ function onKey(code, action) {
   }
 }
 
+// 탭·클릭: 화면마다 누른 곳의 동작을 키 입력과 똑같이 처리한다
+function onTap(x, y) {
+  const hit = hitTest(screen, x, y, { game, level, ui });
+  if (!hit) return;
+  switch (hit.type) {
+    case 'level':
+      setLevel(hit.level);
+      break;
+    case 'start':
+    case 'retry':
+      if (touchMode) goFullscreen();
+      startMatch();
+      break;
+    case 'help':
+      screen = 'help';
+      break;
+    case 'back':
+    case 'title':
+      screen = 'title';
+      break;
+    case 'pause':
+      screen = 'pause';
+      break;
+    case 'resume':
+      screen = 'play';
+      break;
+    case 'plate':
+      pressFood(game, 0, hit.index);
+      break;
+    case 'slot':
+      pressSlot(game, 0, hit.index);
+      break;
+  }
+}
+
 function update(dt) {
   if (screen === 'countdown') {
     countdown -= dt;
@@ -142,6 +227,7 @@ function update(dt) {
       if (ui.lock <= 0 && !ui.entering) ui.ready = true;
     }
   }
+  syncNameForm();
   if (game) {
     renderer.consume(game.events);
     game.events.length = 0;
@@ -178,6 +264,13 @@ async function boot() {
   }
   renderer = createRenderer(canvas);
   input = attachInput(window, onKey);
+  setTouchMode(window.matchMedia?.('(pointer: coarse)').matches ?? false);
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if (e.pointerType !== 'mouse') setTouchMode(true);
+    const r = canvas.getBoundingClientRect();
+    onTap(((e.clientX - r.left) * W) / r.width, ((e.clientY - r.top) * H) / r.height);
+  });
 
   let last = performance.now();
   let acc = 0;
@@ -200,6 +293,7 @@ async function boot() {
     get ranking() { return ranking; },
     get level() { return level; },
     get held() { return [...input.held]; },
+    get touch() { return touchMode; },
     ui,
   };
 }
