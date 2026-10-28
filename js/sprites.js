@@ -1,3 +1,5 @@
+import { buildFoodPixels, toCanvas } from './foodart.js';
+
 // 16×16 도트 스프라이트. 문자 한 개 = 픽셀 한 개, '.'은 투명.
 
 export const SPRITE_ROWS = {
@@ -142,18 +144,23 @@ export function makeSprite(rows, pal, doc = globalThis.document) {
   return c;
 }
 
+// 큰 음식(접시·불판·앞접시)은 32×32 원본 해상도, 작은 아이콘(수치판·안내)은 16×16
 export function buildSprites() {
-  const s = {
+  const icon = {
     rice: makeSprite(SPRITE_ROWS.rice, PALETTES.rice),
     lettuce: makeSprite(SPRITE_ROWS.lettuce, PALETTES.lettuce),
+    meat: makeSprite(SPRITE_ROWS.meat, PALETTES.meat.cooked),
+    rawMeat: makeSprite(SPRITE_ROWS.meat, PALETTES.meat.raw),
+    mushroom: makeSprite(SPRITE_ROWS.mushroom, PALETTES.mushroom.raw),
   };
-  for (const id of ['meat', 'mushroom']) {
+  icon.plateFood = [icon.rice, icon.rawMeat, icon.mushroom, icon.lettuce];
+
+  const f = buildFoodPixels();
+  const s = { icon, rice: toCanvas(f.rice), lettuce: toCanvas(f.lettuce), chili: toCanvas(f.chili) };
+  for (const id of ['meat', 'mushroom', 'golden']) {
     s[id] = {};
-    for (const st of ['raw', 'cooked', 'burnt']) s[id][st] = makeSprite(SPRITE_ROWS[id], PALETTES[id][st]);
+    for (const st of ['raw', 'cooked', 'burnt']) s[id][st] = toCanvas(f[id][st]);
   }
-  s.golden = {};
-  for (const st of ['raw', 'cooked', 'burnt']) s.golden[st] = makeSprite(SPRITE_ROWS.meat, PALETTES.golden[st]);
-  s.chili = makeSprite(SPRITE_ROWS.chili, PALETTES.chili);
   // 접시 위에 놓인 고기·버섯은 날것
   s.plateFood = [s.rice, s.meat.raw, s.mushroom.raw, s.lettuce];
   return s;

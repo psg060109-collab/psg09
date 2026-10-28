@@ -248,6 +248,7 @@ export function createRenderer(canvas) {
     }
   }
 
+  // scale은 16px 기준 배율. 32px 원본은 scale 2에서 1:1, 4에서 2배
   function sprite(img, x, y, scale = 2) {
     ctx.drawImage(img, Math.round(x), Math.round(y), 16 * scale, 16 * scale);
   }
@@ -411,7 +412,7 @@ export function createRenderer(canvas) {
 
     // 수치판
     box(x + 8, 42, SEAT_W - 16, 132, 'rgba(20,10,6,0.55)', 'rgba(0,0,0,0.6)');
-    const icons = { protein: sprites.meat.cooked, carb: sprites.rice, vitamin: sprites.lettuce };
+    const icons = { protein: sprites.icon.meat, carb: sprites.icon.rice, vitamin: sprites.icon.lettuce };
     STATS.forEach((s, row) => {
       const y = gaugeY(row);
       const v = p.stats[s];
@@ -437,8 +438,7 @@ export function createRenderer(canvas) {
     if (p.lastFood) {
       const { food, golden } = p.lastFood;
       const img = golden ? sprites.golden.cooked : FOODS[food].grill ? sprites[FOODS[food].id].cooked : sprites.plateFood[food];
-      const scale = fx.bite[pi] > 0 ? 3 : 2;
-      sprite(img, cx - 8 * scale, cy - 8 * scale, scale);
+      sprite(img, cx - 16, cy - 16 - (fx.bite[pi] > 0 ? 3 : 0));
     }
     // 젓가락(나무) · 숟가락(스테인리스)
     const hx = pi === 0 ? x + 12 : x + SEAT_W - 18;
@@ -465,7 +465,7 @@ export function createRenderer(canvas) {
     if (p.spicy > 0) {
       ctx.fillStyle = `rgba(255,40,20,${0.25 + 0.15 * Math.sin(fx.time * 14)})`;
       ctx.fillRect(SEAT_X[pi], 36, SEAT_W, 316);
-      sprite(sprites.chili, cx - 24, cy - 24, 3);
+      sprite(sprites.chili, cx - 32, cy - 32, 4);
       text(`매워! ${p.spicy.toFixed(1)}`, cx, cy + 34, { size: 24, align: 'center', color: '#fff', shadow: '#7a0a0a' });
     }
     if (p.lock > 0) text('헛손질!', cx, 186, { align: 'center', color: C.warn });
@@ -715,10 +715,10 @@ export function createRenderer(canvas) {
     ctx.drawImage(wood, 0, 0);
     dim(0.5);
     const bob = (k) => Math.round(Math.sin(fx.time * 2 + k) * 3);
-    sprite(sprites.meat.cooked, 120, 34 + bob(0), 3);
-    sprite(sprites.golden.cooked, 472, 34 + bob(2), 3);
-    sprite(sprites.mushroom.cooked, 60, 52 + bob(1), 2);
-    sprite(sprites.chili, 548, 52 + bob(3), 2);
+    sprite(sprites.meat.cooked, 104, 30 + bob(0), 4);
+    sprite(sprites.golden.cooked, 472, 30 + bob(2), 4);
+    sprite(sprites.mushroom.cooked, 52, 50 + bob(1), 2);
+    sprite(sprites.chili, 556, 50 + bob(3), 2);
     text('불판 대첩', 320, 40, { size: 48, align: 'center', color: '#ffb03a', shadow: '#5a1a08' });
     text('고깃집 먹기 대결 vs CPU', 320, 92, { align: 'center', color: C.text });
 
@@ -741,7 +741,7 @@ export function createRenderer(canvas) {
     KEYMAP.foods.forEach((code, i) => {
       const y = 130 + i * 17;
       keyChip(44, y, code, 0);
-      sprite(sprites.plateFood[i], 60, y - 1, 1);
+      sprite(sprites.icon.plateFood[i], 60, y - 1, 1);
       text(FOODS[i].name, 80, y + 1);
     });
     text('불판 먹기', 78, 200, { align: 'center', color: C.cooked });
@@ -804,7 +804,7 @@ export function createRenderer(canvas) {
       const x = pi === 0 ? 140 : 336;
       text(labels[pi], x + 82, 136, { align: 'center', color: C.p[pi] });
       FOODS.forEach((f, i) => {
-        sprite(sprites.plateFood[i], x, 152 + i * 18, 1);
+        sprite(sprites.icon.plateFood[i], x, 152 + i * 18, 1);
         text(`${f.name} ${p.eaten[f.id]}`, x + 20, 154 + i * 18);
       });
       const extra = [
