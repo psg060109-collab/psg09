@@ -6,9 +6,10 @@ import { createGame, step, pressFood, pressSlot, feverWarning } from '../js/game
 import { SPRITE_ROWS, validateRows } from '../js/sprites.js';
 import { buildFoodPixels, SIZE, STAGES } from '../js/foodart.js';
 import { lookup, GAME_CODES } from '../js/input.js';
-import { qualifies, insertRanking } from '../js/ranking.js';
+import { qualifies, insertRanking, loadRanking, saveRanking } from '../js/ranking.js';
 import { summarize, vsCpu } from '../sim/simulate.mjs';
-import { createCpu, LEVELS } from '../js/ai.js';
+import { createCpu, LEVELS, BOTS } from '../js/ai.js';
+import { mulberry32 as mulberry } from '../js/game.js';
 
 const DT = 1 / 60;
 const RICE = 0, MEAT = 1, MUSH = 2, LETTUCE = 3;
@@ -473,4 +474,99 @@ test('밸런스: 피버가 실제로 이득이다 (피버 켠 쪽이 평균적�
   const on = summarize('greedy', 'greedy', 60);
   const off = summarize('greedy', 'greedy', 60, { feverEnabled: false });
   assert.ok(on.avg > off.avg, `${on.avg} vs ${off.avg}`);
+});
+
+// ---------- 검수: 긴 경기 동안의 불변 조건 ----------
+const FUMBLES = ['empty', 'full', 'none', 'raw', 'burnt'];
+
+function playVsCpu(level, seed) {
+  const g = createGame({ seed });
+  const cpu = createCpu(level, 1, seed * 17 + 1);
+  // 사람 쪽은 greedy 봇이 대신 플레이한다
+  const rng = mulberry(seed * 5 + 3);
+  const bot = BOTS.greedy;
+  let next = 0.3;
+  const stats = { ticks: 0, cpuFumbles: 0, cpuActions: 0, violations: [] };
+  const check = (cond, msg) => {
+    if (!cond && stats.violations.length < 5) stats.violations.push(`${g.t.toFixed(2)}s ${msg}`);
+  };
+  while (!g.over && g.t < 900) {
+    step(g, DT);
+    if (g.t >= next) {
+      bot(g, 0, rng);
+      next = g.t + 0.25 + rng() * 0.15;
+    }
+    const before = g.events.length;
+    cpu.update(g);
+    for (const ev of g.events.slice(before)) {
+      if (ev.player === 1) stats.cpuActions++;
+      if (ev.type === 'fail' && ev.player === 1 && FUMBLES.includes(ev.reason)) stats.cpuFumbles++;
+    }
+    g.events.length = 0;
+    stats.ticks++;
+    for (const p of g.players) {
+      for (const s in p.stats) check(Number.isFinite(p.stats[s]) && p.stats[s] >= 0 && p.stats[s] <= CONFIG.statMax, `수치 범위 ${s}=${p.stats[s]}`);
+      check(p.cooldown >= 0 && p.lock >= 0 && p.spicy >= 0, '타이머 음수');
+    }
+    for (const pl of g.plates) check(pl.stock >= 0 && pl.stock <= CONFIG.plateMax && Number.isFinite(pl.timer), `접시 재고 ${pl.stock}`);
+    for (const it of g.grill) {
+      if (!it) continue;
+      check(['raw', 'cooked', 'burnt'].includes(it.state), `불판 상태 ${it.state}`);
+      check(it.progress <= it.cookTime + 1e-9 && Number.isFinite(it.progress), '굽기 진행 초과');
+      if (it.state === 'cooked') check(it.cookedFor < CONFIG.burnAfter + DT, '익음이 탐으로 안 넘어감');
+      if (it.state === 'burnt') check(Number.isFinite(it.burntFor) && it.burntFor < CONFIG.burntClear + DT, '탄 음식이 안 치워짐');
+    }
+  }
+  return { g, ...stats };
+}
+
+test('검수: 난이도별 실제 경기 9판 — 매 틱 불변 조건 위반 0건, 7분 30초 안에 끝남', () => {
+  for (const level of LEVELS) {
+    for (const seed of [1, 2, 3]) {
+      const r = playVsCpu(level, seed);
+      assert.deepEqual(r.violations, [], `${level}#${seed}`);
+      assert.ok(r.g.over && r.g.over.time < 450, `${level}#${seed} 안 끝남`);
+    }
+  }
+});
+
+test('검수(함정 B): CPU가 헛손질로 헛돌지 않는다 — 헛손질은 CPU 행동의 3% 미만', () => {
+  let fumbles = 0;
+  let actions = 0;
+  for (const level of LEVELS) {
+    for (const seed of [4, 5]) {
+      const r = playVsCpu(level, seed);
+      fumbles += r.cpuFumbles;
+      actions += r.cpuActions;
+    }
+  }
+  assert.ok(actions > 200, `CPU 행동 ${actions}`);
+  assert.ok(fumbles / actions < 0.03, `헛손질 ${fumbles}/${actions}`);
+});
+
+test('검수(함정 A): 불판 8칸이 꽉 차도 교착되지 않는다 — 아무도 안 먹어도 결국 모두 비워진다', () => {
+  const g = newGame();
+  g.grill = g.grill.map((_, i) => item(i % 2 ? MUSH : MEAT, 'raw', { owner: i % 2 }));
+  assert.equal(pressFood(g, 0, MEAT), 'full');
+  const limit = FOODS[MEAT].cookTime + CONFIG.burnAfter + CONFIG.burntClear + 0.2;
+  for (let t = 0; t < limit; t += DT) {
+    topUp(g);
+    step(g, DT);
+  }
+  assert.ok(g.grill.every((x) => x === null));
+  run(g, 0.6);
+  topUp(g);
+  assert.equal(pressFood(g, 0, MEAT), 'place');
+});
+
+test('검수: 저장소 접근 자체가 예외를 던져도 랭킹 읽기·쓰기는 조용히 넘어간다', () => {
+  const desc = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('blocked'); } });
+  try {
+    assert.deepEqual(loadRanking(['easy', 'normal']), { easy: [], normal: [] });
+    assert.doesNotThrow(() => saveRanking({ easy: [{ name: 'A', time: 1 }] }));
+  } finally {
+    if (desc) Object.defineProperty(globalThis, 'localStorage', desc);
+    else delete globalThis.localStorage;
+  }
 });

@@ -262,6 +262,59 @@ await check('키 테스트 모드에서 Shift와 함께 여러 키를 동시에 
   assert((await state(page, 'B.screen')) === 'title');
 });
 
+await check('카운트다운 중 ESC, 일시정지 중 BACKSPACE로 타이틀에 돌아간다', async () => {
+  await page.keyboard.press('Escape');
+  assert((await state(page, 'B.screen')) === 'title');
+  await page.keyboard.press('Space');
+  assert((await state(page, 'B.screen')) === 'countdown');
+  await page.keyboard.press('Escape');
+  assert((await state(page, 'B.screen')) === 'title', '카운트다운 ESC');
+  await page.keyboard.press('Space');
+  await until(page, "B.screen === 'play'");
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Backspace');
+  assert((await state(page, 'B.screen')) === 'title', '일시정지 BACKSPACE');
+});
+
+await check('둘이 같은 순간 쓰러지면 무승부 화면이 뜨고 랭킹 입력은 없다', async () => {
+  await page.keyboard.press('Space');
+  await until(page, "B.screen === 'play'");
+  await page.evaluate(() => {
+    const g = window.__bulpan.game;
+    g.players[0].stats.carb = 0.001;
+    g.players[1].stats.vitamin = 0.001;
+  });
+  await until(page, "B.screen === 'result'");
+  assert((await state(page, 'B.game.over.winner')) === -1);
+  await page.waitForTimeout(1300);
+  assert((await state(page, 'B.ui.entering')) === false);
+  await page.keyboard.press('Escape');
+});
+
+await check('브라우저 저장소가 막혀 있어도 부팅·플레이·결과까지 에러 없이 된다', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  await ctx.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new Error('storage blocked'); } });
+  });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(String(e)));
+  p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+  await p.goto(URL_);
+  await p.waitForFunction(() => window.__bulpan);
+  await p.keyboard.press('ArrowRight');
+  await p.keyboard.press('Space');
+  await p.waitForFunction(() => window.__bulpan.screen === 'play');
+  await p.evaluate(() => { window.__bulpan.game.players[1].stats.carb = 0.001; });
+  await p.waitForFunction(() => window.__bulpan.screen === 'result');
+  await p.waitForTimeout(1300);
+  for (const k of ['KeyA', 'KeyB', 'KeyC', 'Enter']) await p.keyboard.press(k);
+  const ranked = await p.evaluate(() => window.__bulpan.ranking.normal[0]?.name);
+  await ctx.close();
+  assert(errs.length === 0, errs.join('\n'));
+  assert(ranked === 'ABC', '이번 세션 동안은 랭킹이 유지돼야 함');
+});
+
 for (const [w, h] of [[1366, 768], [1920, 1080], [1280, 720]]) {
   await check(`${w}×${h} 화면에서 잘리지 않는다`, async () => {
     const p = await openPage(w, h);
@@ -273,6 +326,21 @@ for (const [w, h] of [[1366, 768], [1920, 1080], [1280, 720]]) {
     assert(box.l >= 0 && box.t >= 0 && box.r <= w && box.b <= h && box.sw <= w && box.sh <= h, JSON.stringify(box));
   });
 }
+
+await check('통째 플레이: 상태를 건드리지 않고 부팅→시작→CPU 혼자 먹음→내가 굶어서 패배까지 자연스럽게 흘러간다', async () => {
+  const p = await openPage(1366, 768);
+  await p.keyboard.press('Space');
+  await p.waitForFunction(() => window.__bulpan.screen === 'play');
+  await p.waitForFunction(() => window.__bulpan.screen === 'result', null, { timeout: 70000, polling: 500 });
+  const r = await p.evaluate(() => {
+    const g = window.__bulpan.game;
+    return { winner: g.over.winner, time: g.over.time, cpuAte: Object.values(g.players[1].eaten).reduce((a, b) => a + b, 0), cause: g.over.cause[0] };
+  });
+  await p.close();
+  assert(r.winner === 1 && r.cause, JSON.stringify(r));
+  assert(r.time > 40 && r.time < 55, `쓰러진 시간 ${r.time}`);
+  assert(r.cpuAte > 10, `CPU가 먹은 수 ${r.cpuAte}`);
+});
 
 await check('폰트가 실제로 로드된다', async () => {
   assert((await page.evaluate(() => document.fonts.check('12px Galmuri'))) === true);

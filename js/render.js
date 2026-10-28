@@ -828,7 +828,8 @@ export function createRenderer(canvas) {
     if (!top.length) text('아직 기록 없음 — 첫 주인공이 되어 보세요', 320, 280, { align: 'center', color: C.dim });
     top.forEach((r, n) => text(`${n + 1}위 ${r.name}  ${formatTime(r.time)}`, 320, 280 + n * 12, { align: 'center', color: n === 0 ? C.warn : C.text }));
 
-    if (blink(2)) text('SPACE 로 시작', 320, 318, { size: 24, align: 'center', color: '#fff', shadow: '#5a1a08' });
+    // 안내는 사라지지 않고 색만 바뀐다 (잠깐 봐도 다음에 누를 키가 보이게)
+    text('SPACE 로 시작', 320, 318, { size: 24, align: 'center', color: blink(2) ? '#fff' : C.warn, shadow: '#5a1a08' });
     text('H 자세한 규칙   ·   T 키 테스트', 320, 346, { align: 'center', color: C.dim });
   }
 
@@ -909,7 +910,7 @@ export function createRenderer(canvas) {
       text('ENTER 저장  ESC 건너뛰기', 320, 284, { align: 'center', color: C.dim });
     } else if (ui.ready) {
       if (ui.rank) text(`${ui.rank}위로 기록되었습니다!`, 320, 250, { align: 'center', color: C.warn });
-      if (blink(2)) text('SPACE 다시 하기', 320, 276, { align: 'center' });
+      text('SPACE 다시 하기', 320, 276, { align: 'center', color: blink(2) ? '#fff' : C.warn });
       text('ESC 타이틀로', 320, 296, { align: 'center', color: C.dim });
     }
   }

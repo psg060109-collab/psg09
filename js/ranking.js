@@ -6,11 +6,17 @@ function clean(list) {
   return Array.isArray(list) ? list.filter((r) => r && typeof r.time === 'number').slice(0, RANK_SIZE) : [];
 }
 
+// 저장소는 꺼내는 것 자체가 예외를 던질 수 있다 (쿠키 차단·일부 사생활 보호 모드).
+// 그래서 기본값으로 꺼내지 않고, 반드시 try 안에서 꺼낸다.
+function getStorage(storage) {
+  return storage ?? globalThis.localStorage;
+}
+
 // { easy: [...], normal: [...], hard: [...] }
-export function loadRanking(levels, storage = globalThis.localStorage) {
+export function loadRanking(levels, storage) {
   let data = {};
   try {
-    data = JSON.parse(storage.getItem(KEY) || '{}') || {};
+    data = JSON.parse(getStorage(storage).getItem(KEY) || '{}') || {};
   } catch {
     data = {};
   }
@@ -26,9 +32,9 @@ export function insertRanking(list, entry) {
   return [...list, entry].sort((a, b) => a.time - b.time).slice(0, RANK_SIZE);
 }
 
-export function saveRanking(ranking, storage = globalThis.localStorage) {
+export function saveRanking(ranking, storage) {
   try {
-    storage.setItem(KEY, JSON.stringify(ranking));
+    getStorage(storage).setItem(KEY, JSON.stringify(ranking));
   } catch {
     // 저장이 막힌 브라우저에서는 이번 세션 동안만 유지
   }
